@@ -2041,6 +2041,282 @@ function renderOfficialReportHTML() {
 }
 
 // ============================================================================
+// CONEXIÓN CON GOOGLE SHEETS (OPCIÓN A) Y EXPORTACIÓN A EXCEL (.CSV)
+// ============================================================================
+
+const STORAGE_SHEETS_URL_KEY = 'clave_inspeccion_sheets_url_v1';
+// Si deseas dejar fija la URL para todos los inspectores en el código, pégala aquí:
+const DEFAULT_SHEETS_WEBHOOK_URL = '';
+
+function getSheetsWebhookUrl() {
+  return localStorage.getItem(STORAGE_SHEETS_URL_KEY) || DEFAULT_SHEETS_WEBHOOK_URL || '';
+}
+
+function openSheetsConfigModal() {
+  const input = document.getElementById('sheets-webhook-url');
+  if (input) input.value = getSheetsWebhookUrl();
+  document.getElementById('modal-sheets-config').classList.add('open');
+}
+
+function closeSheetsConfigModal() {
+  document.getElementById('modal-sheets-config').classList.remove('open');
+}
+
+function saveSheetsWebhookUrl() {
+  const input = document.getElementById('sheets-webhook-url');
+  const url = (input?.value || '').trim();
+  if (!url) {
+    alert('Por favor pega la URL de la aplicación web de Google Apps Script.');
+    return;
+  }
+  localStorage.setItem(STORAGE_SHEETS_URL_KEY, url);
+  closeSheetsConfigModal();
+  sendToGoogleSheets();
+}
+
+function buildSheetsPayload() {
+  const allItems = collectAllActiveItems();
+  let evaluated = 0;
+  let good = 0;
+  let warn = 0;
+  let bad = 0;
+  let photosCount = state.meta.coverPhoto ? 1 : 0;
+
+  allItems.forEach(({ entry }) => {
+    if (entry.status) evaluated++;
+    if (entry.status === 'good') good++;
+    if (entry.status === 'warn') warn++;
+    if (entry.status === 'bad') bad++;
+    if (Array.isArray(entry.photos)) photosCount += entry.photos.length;
+  });
+
+  const progressPct = allItems.length > 0 ? Math.round((evaluated / allItems.length) * 100) : 0;
+
+  const urgentFindings = allItems
+    .filter(x => x.entry.status === 'bad')
+    .map(x => `[${x.area}] ${x.title}: ${x.entry.notes || 'Urgente'}`)
+    .join(' | ');
+
+  const regularFindings = allItems
+    .filter(x => x.entry.status === 'warn')
+    .map(x => `[${x.area}] ${x.title}: ${x.entry.notes || 'Mantenimiento'}`)
+    .join(' | ');
+
+  const roomsList = state.rooms.map(r => r.name).join(', ');
+
+  return {
+    timestamp: new Date().toLocaleString('es-MX'),
+    folio: state.meta.folio || '',
+    paquete: (state.package || 'sin seleccionar').toUpperCase(),
+    fechaVisita: state.meta.date || '',
+    horaVisita: state.meta.time || '',
+    motivo: state.meta.purpose || '',
+    clienteNombre: state.meta.clientName || '',
+    clienteTelefono: state.meta.clientPhone || '',
+    clienteCorreo: state.meta.clientEmail || '',
+    atendioEnSitio: state.meta.accompaniedBy || '',
+    direccionInmueble: state.meta.address || '',
+    tipoInmueble: state.meta.propertyType || '',
+    superficieM2: state.meta.areaM2 || '',
+    niveles: state.meta.levels || '',
+    antiguedad: state.meta.age || '',
+    ocupacion: state.meta.occupancy || '',
+    clima: state.meta.weather || '',
+    inspector: state.meta.inspectorName || '',
+    avancePorcentaje: `${progressPct}%`,
+    puntosBuenos: good,
+    puntosRegulares: warn,
+    puntosUrgentesMalos: bad,
+    totalFotos: photosCount,
+    habitacionesEvaluadas: roomsList,
+    hallazgosUrgentes: urgentFindings || 'Ninguno',
+    hallazgosRegulares: regularFindings || 'Ninguno',
+    dronVideoUrl: state.drone?.videoUrl || '',
+    humedadLecturaMax: state.moisture?.maxReading || '',
+    tour360Url: state.premium?.tourUrl || '',
+    peritoColegiado: state.premium?.profName || '',
+    cedulaProfesional: state.premium?.cedula || '',
+    dictamenHabitabilidad: state.package === 'premium' ? (state.premium?.verdict || '') : 'N/A',
+    comentariosGenerales: state.meta.generalNotes || ''
+  };
+}
+
+async function sendToGoogleSheets() {
+  saveState();
+  const webhookUrl = getSheetsWebhookUrl();
+  if (!webhookUrl) {
+    openSheetsConfigModal();
+    return;
+  }
+
+  const navBtn = document.getElementById('btn-nav-sheets');
+  const closeBtn = document.getElementById('btn-closing-sheets');
+  const origNavText = navBtn ? navBtn.innerHTML : '';
+  const origCloseText = closeBtn ? closeBtn.innerHTML : '';
+
+  if (navBtn) {
+    navBtn.disabled = true;
+    navBtn.innerHTML = '⏳ Enviando...';
+  }
+  if (closeBtn) {
+    closeBtn.disabled = true;
+    closeBtn.innerHTML = '⏳ Enviando a Google Sheets...';
+  }
+
+  const payload = buildSheetsPayload();
+
+  try {
+    await fetch(webhookUrl, {
+      method: 'POST',
+      mode: 'no-cors',
+      headers: {
+        'Content-Type': 'text/plain;charset=utf-8'
+      },
+      body: JSON.stringify(payload)
+    });
+
+    alert(`✅ ¡Inspección ${payload.folio} enviada exitosamente a Google Sheets!`);
+  } catch (err) {
+    console.error('Error enviando a Google Sheets:', err);
+    alert('No se pudo conectar con Google Sheets. Verifica tu conexión a internet o la URL configurada en ⚙️.');
+  } finally {
+    if (navBtn) {
+      navBtn.disabled = false;
+      navBtn.innerHTML = origNavText;
+    }
+    if (closeBtn) {
+      closeBtn.disabled = false;
+      closeBtn.innerHTML = origCloseText;
+    }
+  }
+}
+
+function exportInspectionCSV() {
+  saveState();
+  const p = buildSheetsPayload();
+  const headers = [
+    'Fecha Registro', 'Folio', 'Paquete', 'Fecha Visita', 'Hora', 'Motivo',
+    'Cliente', 'Telefono', 'Correo', 'Atendio en Sitio', 'Direccion Inmueble',
+    'Tipo Inmueble', 'Superficie m2', 'Niveles', 'Antiguedad', 'Ocupacion',
+    'Clima', 'Inspector', 'Avance', 'Puntos Buenos', 'Puntos Regulares',
+    'Puntos Urgentes (Malos)', 'Total Fotos', 'Habitaciones Evaluadas',
+    'Hallazgos Urgentes', 'Hallazgos Regulares', 'URL Dron', 'Lectura Max Humedad',
+    'URL Tour 360', 'Perito Colegiado', 'Cedula Profesional', 'Dictamen Legal',
+    'Comentarios Generales'
+  ];
+
+  const values = [
+    p.timestamp, p.folio, p.paquete, p.fechaVisita, p.horaVisita, p.motivo,
+    p.clienteNombre, p.clienteTelefono, p.clienteCorreo, p.atendioEnSitio, p.direccionInmueble,
+    p.tipoInmueble, p.superficieM2, p.niveles, p.antiguedad, p.ocupacion,
+    p.clima, p.inspector, p.avancePorcentaje, p.puntosBuenos, p.puntosRegulares,
+    p.puntosUrgentesMalos, p.totalFotos, p.habitacionesEvaluadas,
+    p.hallazgosUrgentes, p.hallazgosRegulares, p.dronVideoUrl, p.humedadLecturaMax,
+    p.tour360Url, p.peritoColegiado, p.cedulaProfesional, p.dictamenHabitabilidad,
+    p.comentariosGenerales
+  ];
+
+  const escapeCsvCell = (val) => {
+    const s = String(val ?? '').replace(/"/g, '""');
+    return `"${s}"`;
+  };
+
+  // BOM UTF-8 (\uFEFF) para que Excel en Windows abra acentos y ñ perfectamente
+  const csvContent = '\uFEFF' + headers.map(escapeCsvCell).join(',') + '\r\n' + values.map(escapeCsvCell).join(',') + '\r\n';
+  const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  const safeFolio = (state.meta.folio || 'inspeccion').replace(/[^a-zA-Z0-9_-]/g, '_');
+  a.href = url;
+  a.download = `${safeFolio}_CLAVE_Excel.csv`;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  URL.revokeObjectURL(url);
+}
+
+function copyGoogleAppsScriptCode() {
+  const scriptCode = `// ============================================================================
+// SCRIPT PARA GOOGLE SHEETS - CLAVE CONSTRUCCIÓN
+// Instrucciones: Pega este código en Extensiones -> Apps Script y publícalo
+// como Aplicación Web con acceso para "Cualquier persona".
+// ============================================================================
+
+function doPost(e) {
+  var sheet = SpreadsheetApp.getActiveSpreadsheet().getActiveSheet();
+  var data = JSON.parse(e.postData.contents);
+
+  var headers = [
+    "Fecha Envío", "Folio", "Paquete", "Fecha Visita", "Hora", "Motivo",
+    "Cliente", "Teléfono", "Correo", "Atendió en Sitio", "Dirección del Inmueble",
+    "Tipo Inmueble", "Superficie m2", "Niveles", "Antigüedad", "Ocupación",
+    "Clima", "Inspector", "Avance", "Puntos Buenos", "Puntos Regulares",
+    "Puntos Urgentes (Malos)", "Total Fotos", "Habitaciones Evaluadas",
+    "Hallazgos Urgentes", "Hallazgos Regulares", "URL Video Dron",
+    "Lectura Máx Humedad", "URL Tour 360", "Perito Colegiado",
+    "Cédula Profesional", "Dictamen Habitabilidad", "Comentarios Generales"
+  ];
+
+  // Si la hoja está vacía, crea la fila de encabezados con formato
+  if (sheet.getLastRow() === 0) {
+    sheet.appendRow(headers);
+    sheet.getRange(1, 1, 1, headers.length)
+      .setBackground("#141414")
+      .setFontColor("#FFFFFF")
+      .setFontWeight("bold");
+    sheet.setFrozenRows(1);
+  }
+
+  var row = [
+    data.timestamp || new Date().toLocaleString(),
+    data.folio || "",
+    data.paquete || "",
+    data.fechaVisita || "",
+    data.horaVisita || "",
+    data.motivo || "",
+    data.clienteNombre || "",
+    data.clienteTelefono || "",
+    data.clienteCorreo || "",
+    data.atendioEnSitio || "",
+    data.direccionInmueble || "",
+    data.tipoInmueble || "",
+    data.superficieM2 || "",
+    data.niveles || "",
+    data.antiguedad || "",
+    data.ocupacion || "",
+    data.clima || "",
+    data.inspector || "",
+    data.avancePorcentaje || "",
+    data.puntosBuenos || 0,
+    data.puntosRegulares || 0,
+    data.puntosUrgentesMalos || 0,
+    data.totalFotos || 0,
+    data.habitacionesEvaluadas || "",
+    data.hallazgosUrgentes || "",
+    data.hallazgosRegulares || "",
+    data.dronVideoUrl || "",
+    data.humedadLecturaMax || "",
+    data.tour360Url || "",
+    data.peritoColegiado || "",
+    data.cedulaProfesional || "",
+    data.dictamenHabitabilidad || "",
+    data.comentariosGenerales || ""
+  ];
+
+  sheet.appendRow(row);
+
+  return ContentService.createTextOutput(JSON.stringify({ status: "ok", folio: data.folio }))
+    .setMimeType(ContentService.MimeType.JSON);
+}`;
+
+  navigator.clipboard.writeText(scriptCode).then(() => {
+    alert('✅ ¡Código copiado al portapapeles! Ahora abre tu Google Sheet -> Extensiones -> Apps Script y pégalo.');
+  }).catch(() => {
+    prompt('Copia este código y pégalo en Extensiones -> Apps Script de tu Google Sheet:', scriptCode);
+  });
+}
+
+// ============================================================================
 // UTILIDADES
 // ============================================================================
 
@@ -2057,3 +2333,4 @@ function escapeHtml(str) {
 function escapeAttr(str) {
   return escapeHtml(str).replace(/`/g, '&#096;');
 }
+

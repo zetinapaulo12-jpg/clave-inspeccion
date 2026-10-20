@@ -26,6 +26,12 @@
         <button type="button" class="btn btn-outline btn-sm" onclick="openHistoryModal()">
           📂 Mis Inspecciones (<span id="saved-count">0</span>)
         </button>
+        <button type="button" class="btn btn-outline btn-sm" style="border-color: var(--status-good); color: #15803D; background: #F0FDF4;" onclick="sendToGoogleSheets()" id="btn-nav-sheets">
+          📊 Enviar a Google Sheets
+        </button>
+        <button type="button" class="btn btn-outline btn-sm" onclick="openSheetsConfigModal()" title="Configurar conexión con Google Sheets">
+          ⚙️
+        </button>
         <button type="button" class="btn btn-outline btn-sm" onclick="exportInspectionJSON()" title="Descargar respaldo digital (.json)">
           💾 Respaldar
         </button>
@@ -562,12 +568,18 @@
           <button type="button" class="btn btn-outline" onclick="switchTab('tab-rooms')">
             ← Volver a Habitaciones
           </button>
-          <div style="display:flex; gap:10px;">
+          <div style="display:flex; gap:10px; flex-wrap:wrap;">
             <button type="button" class="btn btn-outline" onclick="saveToHistoryExplicit()">
               💾 Guardar en Historial
             </button>
+            <button type="button" class="btn btn-outline" onclick="exportInspectionCSV()" title="Descargar como tabla de Excel (.csv)">
+              📥 Descargar Excel (.csv)
+            </button>
+            <button type="button" class="btn" style="background: var(--status-good); color:#fff;" onclick="sendToGoogleSheets()" id="btn-closing-sheets">
+              📊 Enviar a Google Sheets
+            </button>
             <button type="button" class="btn btn-gold" onclick="toggleReportPreview(true)">
-              📄 Abrir Informe Oficial para Imprimir / Guardar PDF
+              📄 Abrir Informe Oficial / PDF
             </button>
           </div>
         </div>
@@ -666,6 +678,62 @@
       <div style="display:flex; justify-content:space-between;">
         <button type="button" class="btn btn-gold btn-sm" onclick="saveToHistoryExplicit()">💾 Guardar Inspección Actual</button>
         <button type="button" class="btn btn-outline btn-sm" onclick="closeHistoryModal()">Cerrar</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- MODAL: CONFIGURACIÓN DE GOOGLE SHEETS -->
+  <div class="modal-backdrop" id="modal-sheets-config">
+    <div class="modal-card" style="max-width:680px;">
+      <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px;">
+        <h3 style="font-size:1.05rem; font-weight:700;">📊 Conexión con Google Sheets (CLAVE CONSTRUCCIÓN)</h3>
+        <button type="button" class="btn btn-outline btn-sm" onclick="closeSheetsConfigModal()">✕</button>
+      </div>
+
+      <p style="font-size:0.83rem; color:var(--text-secondary); margin-bottom:14px;">
+        Conecta tu propia Hoja de Cálculo de Google para que cada vez que un inspector presione <strong>"📊 Enviar a Google Sheets"</strong>, se agregue automáticamente una fila con todos los datos de la inspección.
+      </p>
+
+      <div class="form-group" style="margin-bottom:16px;">
+        <label>URL de tu Web App de Google Sheets (Apps Script)</label>
+        <input
+          type="url"
+          class="form-control"
+          id="sheets-webhook-url"
+          placeholder="https://script.google.com/macros/s/AKfycb.../exec"
+        />
+        <span style="font-size:0.74rem; color:var(--text-muted);">
+          Una vez pegada aquí, quedará guardada para enviar todas las inspecciones con un solo clic.
+        </span>
+      </div>
+
+      <div style="display:flex; gap:8px; flex-wrap:wrap; margin-bottom:18px;">
+        <button type="button" class="btn" style="background:var(--status-good); color:#fff;" onclick="saveSheetsWebhookUrl()">
+          💾 Guardar URL y Probar Envío
+        </button>
+        <button type="button" class="btn btn-outline" onclick="exportInspectionCSV()">
+          📥 Descargar Inspección Actual en Excel (.csv)
+        </button>
+      </div>
+
+      <div style="border-top:1px solid var(--border-color); padding-top:14px;">
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
+          <strong style="font-size:0.86rem;">⚡ ¿Cómo crear tu enlace en Google Sheets en 1 minuto?</strong>
+          <button type="button" class="btn btn-gold btn-sm" onclick="copyGoogleAppsScriptCode()">
+            📋 Copiar Código Apps Script
+          </button>
+        </div>
+        <ol style="font-size:0.8rem; color:var(--text-secondary); padding-left:18px; display:flex; flex-direction:column; gap:5px; margin-bottom:10px;">
+          <li>Abre una hoja nueva en <a href="https://sheets.new" target="_blank" style="color:var(--brand-gold-dark); font-weight:700;">Google Sheets (sheets.new)</a>.</li>
+          <li>En el menú superior entra a <strong>Extensiones → Apps Script</strong>, borra lo que haya y pega el código haciendo clic en <strong>"📋 Copiar Código Apps Script"</strong>.</li>
+          <li>Haz clic en el botón azul <strong>Implementar → Nueva implementación</strong>.</li>
+          <li>En "Selecciona el tipo" elige <strong>Aplicación web</strong>, en "Quién tiene acceso" elige <strong>Cualquier persona (Anyone)</strong> y dale a <strong>Implementar</strong>.</li>
+          <li>Copia la <strong>URL de la aplicación web</strong> que te da Google y pégala en el campo de arriba. ¡Listo!</li>
+        </ol>
+      </div>
+
+      <div style="display:flex; justify-content:flex-end; margin-top:12px;">
+        <button type="button" class="btn btn-outline btn-sm" onclick="closeSheetsConfigModal()">Cerrar</button>
       </div>
     </div>
   </div>
