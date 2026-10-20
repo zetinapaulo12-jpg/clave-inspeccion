@@ -8,6 +8,7 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Plus+Jakarta+Sans:wght@600;700;800&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="styles.css" />
+  <script src="https://cdn.jsdelivr.net/npm/xlsx-js-style@1.2.0/dist/xlsx.bundle.js"></script>
 </head>
 <body>
 
@@ -24,6 +25,9 @@
 
       <!-- BOTONES RÁPIDOS EN MÓVIL -->
       <div class="mobile-header-btns">
+        <button type="button" class="btn btn-green btn-sm" onclick="exportFinishedWorkbookAndDrive()" title="Descargar Hoja Terminada y Subir a Drive">
+          📊 Drive
+        </button>
         <button type="button" class="btn btn-gold btn-sm" onclick="toggleReportPreview(true)">
           📄 PDF
         </button>
@@ -36,11 +40,11 @@
         <button type="button" class="btn btn-outline btn-sm" onclick="openHistoryModal(); closeMobileMenu();">
           📂 Mis Inspecciones (<span id="saved-count">0</span>)
         </button>
-        <button type="button" class="btn btn-green btn-sm" onclick="sendToGoogleSheets(); closeMobileMenu();" id="btn-nav-sheets">
-          📊 Enviar a Google Sheets
+        <button type="button" class="btn btn-green btn-sm" onclick="exportFinishedWorkbookAndDrive(); closeMobileMenu();" id="btn-nav-sheets">
+          ☁️ Generar Hoja y Subir a Drive
         </button>
-        <button type="button" class="btn btn-outline btn-sm" onclick="openSheetsConfigModal(); closeMobileMenu();" title="Configurar conexión con Google Sheets">
-          ⚙️ Sheets
+        <button type="button" class="btn btn-outline btn-sm" onclick="downloadFinishedExcelWorkbook(); closeMobileMenu();" title="Descargar Hoja de Cálculo Terminada (.xlsx)">
+          📊 Descargar Hoja (.xlsx)
         </button>
         <button type="button" class="btn btn-outline btn-sm" onclick="exportInspectionJSON(); closeMobileMenu();" title="Descargar respaldo digital (.json)">
           💾 Respaldar
@@ -666,11 +670,11 @@
             <button type="button" class="btn btn-outline" onclick="saveToHistoryExplicit()">
               💾 Guardar en Historial
             </button>
-            <button type="button" class="btn btn-outline" onclick="exportInspectionCSV()" title="Descargar como tabla de Excel (.csv)">
-              📥 Descargar Excel (.csv)
+            <button type="button" class="btn btn-outline" onclick="downloadFinishedExcelWorkbook()" title="Descargar Hoja de Cálculo Terminada (.xlsx)">
+              📊 Descargar Hoja Terminada (.xlsx)
             </button>
-            <button type="button" class="btn" style="background: var(--status-good); color:#fff;" onclick="sendToGoogleSheets()" id="btn-closing-sheets">
-              📊 Enviar a Google Sheets
+            <button type="button" class="btn btn-green" onclick="exportFinishedWorkbookAndDrive()" id="btn-closing-sheets">
+              ☁️ Generar Hoja y Subir a Google Drive
             </button>
             <button type="button" class="btn btn-gold" onclick="toggleReportPreview(true)">
               📄 Abrir Informe Oficial / PDF
@@ -804,57 +808,62 @@
     </div>
   </div>
 
-  <!-- MODAL: CONFIGURACIÓN DE GOOGLE SHEETS -->
+  <!-- MODAL: HOJA DE CÁLCULO TERMINADA Y SUBIDA A GOOGLE DRIVE -->
   <div class="modal-backdrop" id="modal-sheets-config">
-    <div class="modal-card" style="max-width:680px;">
+    <div class="modal-card" style="max-width:640px;">
       <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px;">
-        <h3 style="font-size:1.05rem; font-weight:700;">📊 Conexión con Google Sheets (CLAVE CONSTRUCCIÓN)</h3>
+        <h3 style="font-size:1.08rem; font-weight:800;">📊 Hoja de Inspección Terminada (.xlsx) → Google Drive</h3>
         <button type="button" class="btn btn-outline btn-sm" onclick="closeSheetsConfigModal()">✕</button>
       </div>
 
-      <p style="font-size:0.83rem; color:var(--text-secondary); margin-bottom:14px;">
-        Conecta tu propia Hoja de Cálculo de Google para que cada vez que un inspector presione <strong>"📊 Enviar a Google Sheets"</strong>, se agregue automáticamente una fila con todos los datos de la inspección.
-      </p>
-
-      <div class="form-group" style="margin-bottom:16px;">
-        <label>URL de tu Web App de Google Sheets (Apps Script)</label>
-        <input
-          type="url"
-          class="form-control"
-          id="sheets-webhook-url"
-          placeholder="https://script.google.com/macros/s/AKfycb.../exec"
-        />
-        <span style="font-size:0.74rem; color:var(--text-muted);">
-          Una vez pegada aquí, quedará guardada para enviar todas las inspecciones con un solo clic.
-        </span>
+      <div style="background:#F0FDF4; border:1px solid #BBF7D0; border-radius:12px; padding:14px 16px; margin-bottom:16px;">
+        <div style="font-weight:800; color:#15803D; font-size:0.92rem; margin-bottom:4px;">
+          ✅ ¡Tu Hoja de Cálculo Oficial ya está generada y lista!
+        </div>
+        <p style="font-size:0.82rem; color:#166534; margin:0;">
+          Archivo generado: <strong id="drive-modal-filename">CLV-2026_Inspeccion_CLAVE.xlsx</strong><br/>
+          Incluye formato corporativo a color y <strong>3 pestañas completas</strong>:
+          <strong>1) Ficha y Resumen Ejecutivo</strong>, <strong>2) Checklist Completo por Habitación</strong> y <strong>3) Fila Concentrada</strong>.
+        </p>
       </div>
 
-      <div style="display:flex; gap:8px; flex-wrap:wrap; margin-bottom:18px;">
-        <button type="button" class="btn" style="background:var(--status-good); color:#fff;" onclick="saveSheetsWebhookUrl()">
-          💾 Guardar URL y Probar Envío
+      <!-- OPCIONES DIRECTAS PARA SUBIR A GOOGLE DRIVE -->
+      <div style="display:flex; flex-direction:column; gap:10px; margin-bottom:18px;">
+        <button type="button" class="btn btn-green" style="width:100%; padding:13px 16px; font-size:0.92rem;" onclick="shareWorkbookToDriveApp()">
+          📲 Subir directo a la App de Google Drive (En Celular / Tablet)
         </button>
-        <button type="button" class="btn btn-outline" onclick="exportInspectionCSV()">
-          📥 Descargar Inspección Actual en Excel (.csv)
+
+        <button type="button" class="btn btn-primary" style="width:100%; padding:13px 16px; font-size:0.92rem;" onclick="openDriveFolderAndDownload()">
+          ☁️ Abrir Mi Carpeta de Google Drive (Para soltar la hoja descargada)
+        </button>
+
+        <button type="button" class="btn btn-outline" style="width:100%;" onclick="downloadFinishedExcelWorkbook()">
+          📥 Volver a Descargar Hoja Terminada (.xlsx)
         </button>
       </div>
 
       <div style="border-top:1px solid var(--border-color); padding-top:14px;">
-        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
-          <strong style="font-size:0.86rem;">⚡ ¿Cómo crear tu enlace en Google Sheets en 1 minuto?</strong>
-          <button type="button" class="btn btn-gold btn-sm" onclick="copyGoogleAppsScriptCode()">
-            📋 Copiar Código Apps Script
+        <label style="display:block; font-size:0.8rem; font-weight:700; color:var(--text-secondary); margin-bottom:6px;">
+          📁 Enlace de tu Carpeta de Google Drive de la Empresa (Opcional)
+        </label>
+        <div style="display:flex; gap:8px; flex-wrap:wrap;">
+          <input
+            type="url"
+            class="form-control"
+            id="drive-folder-url"
+            style="flex:1; min-width:220px;"
+            placeholder="https://drive.google.com/drive/folders/..."
+          />
+          <button type="button" class="btn btn-gold btn-sm" onclick="saveDriveFolderUrl()">
+            💾 Fijar Carpeta
           </button>
         </div>
-        <ol style="font-size:0.8rem; color:var(--text-secondary); padding-left:18px; display:flex; flex-direction:column; gap:5px; margin-bottom:10px;">
-          <li>Abre una hoja nueva en <a href="https://sheets.new" target="_blank" style="color:var(--brand-gold-dark); font-weight:700;">Google Sheets (sheets.new)</a>.</li>
-          <li>En el menú superior entra a <strong>Extensiones → Apps Script</strong>, borra lo que haya y pega el código haciendo clic en <strong>"📋 Copiar Código Apps Script"</strong>.</li>
-          <li>Haz clic en el botón azul <strong>Implementar → Nueva implementación</strong>.</li>
-          <li>En "Selecciona el tipo" elige <strong>Aplicación web</strong>, en "Quién tiene acceso" elige <strong>Cualquier persona (Anyone)</strong> y dale a <strong>Implementar</strong>.</li>
-          <li>Copia la <strong>URL de la aplicación web</strong> que te da Google y pégala en el campo de arriba. ¡Listo!</li>
-        </ol>
+        <span style="display:block; font-size:0.74rem; color:var(--text-muted); margin-top:4px;">
+          Si pegas aquí el enlace de la carpeta de Drive donde guardan las inspecciones de CLAVE CONSTRUCCIÓN, el botón abrirá directamente esa carpeta cada vez. Si lo dejas vacío, abrirá tu unidad principal de Google Drive.
+        </span>
       </div>
 
-      <div style="display:flex; justify-content:flex-end; margin-top:12px;">
+      <div style="display:flex; justify-content:flex-end; margin-top:14px;">
         <button type="button" class="btn btn-outline btn-sm" onclick="closeSheetsConfigModal()">Cerrar</button>
       </div>
     </div>

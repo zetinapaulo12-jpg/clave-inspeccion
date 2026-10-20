@@ -2365,20 +2365,33 @@ function renderOfficialReportHTML() {
 }
 
 // ============================================================================
-// CONEXIÓN CON GOOGLE SHEETS (OPCIÓN A) Y EXPORTACIÓN A EXCEL (.CSV)
+// GENERADOR DE HOJA DE CÁLCULO TERMINADA (.XLSX) Y SUBIDA A GOOGLE DRIVE
 // ============================================================================
 
-const STORAGE_SHEETS_URL_KEY = 'clave_inspeccion_sheets_url_v1';
-// Si deseas dejar fija la URL para todos los inspectores en el código, pégala aquí:
-const DEFAULT_SHEETS_WEBHOOK_URL = '';
+const STORAGE_DRIVE_FOLDER_KEY = 'clave_inspeccion_drive_folder_v1';
+// Si deseas dejar fijo el enlace de la carpeta de Google Drive de la empresa, pégalo aquí:
+const DEFAULT_DRIVE_FOLDER_URL = 'https://drive.google.com/drive/my-drive';
 
-function getSheetsWebhookUrl() {
-  return localStorage.getItem(STORAGE_SHEETS_URL_KEY) || DEFAULT_SHEETS_WEBHOOK_URL || '';
+function getDriveFolderUrl() {
+  return localStorage.getItem(STORAGE_DRIVE_FOLDER_KEY) || DEFAULT_DRIVE_FOLDER_URL;
+}
+
+function getSafeWorkbookFilename() {
+  const safeFolio = (state.meta.folio || 'CLV-2026').replace(/[^a-zA-Z0-9_-]/g, '_');
+  const safeClient = (state.meta.clientName || 'Inmueble')
+    .trim()
+    .replace(/[^a-zA-Z0-9áéíóúÁÉÍÓÚñÑ\s_-]/g, '')
+    .replace(/\s+/g, '_')
+    .slice(0, 28);
+  return `${safeFolio}_${safeClient || 'Inspeccion'}_CLAVE.xlsx`;
 }
 
 function openSheetsConfigModal() {
-  const input = document.getElementById('sheets-webhook-url');
-  if (input) input.value = getSheetsWebhookUrl();
+  const input = document.getElementById('drive-folder-url');
+  const saved = localStorage.getItem(STORAGE_DRIVE_FOLDER_KEY) || '';
+  if (input) input.value = saved;
+  const fnEl = document.getElementById('drive-modal-filename');
+  if (fnEl) fnEl.textContent = getSafeWorkbookFilename();
   document.getElementById('modal-sheets-config').classList.add('open');
 }
 
@@ -2386,16 +2399,16 @@ function closeSheetsConfigModal() {
   document.getElementById('modal-sheets-config').classList.remove('open');
 }
 
-function saveSheetsWebhookUrl() {
-  const input = document.getElementById('sheets-webhook-url');
+function saveDriveFolderUrl() {
+  const input = document.getElementById('drive-folder-url');
   const url = (input?.value || '').trim();
   if (!url) {
-    alert('Por favor pega la URL de la aplicación web de Google Apps Script.');
+    localStorage.removeItem(STORAGE_DRIVE_FOLDER_KEY);
+    showToast('Se usará tu unidad principal de Google Drive', 'info');
     return;
   }
-  localStorage.setItem(STORAGE_SHEETS_URL_KEY, url);
-  closeSheetsConfigModal();
-  sendToGoogleSheets();
+  localStorage.setItem(STORAGE_DRIVE_FOLDER_KEY, url);
+  showToast('📁 Carpeta de Google Drive fijada correctamente', 'success');
 }
 
 function buildSheetsPayload() {
@@ -2467,72 +2480,386 @@ function buildSheetsPayload() {
   };
 }
 
-async function sendToGoogleSheets() {
-  saveState();
-  const webhookUrl = getSheetsWebhookUrl();
-  if (!webhookUrl) {
-    openSheetsConfigModal();
-    return;
-  }
-
-  const navBtn = document.getElementById('btn-nav-sheets');
-  const closeBtn = document.getElementById('btn-closing-sheets');
-  const origNavText = navBtn ? navBtn.innerHTML : '';
-  const origCloseText = closeBtn ? closeBtn.innerHTML : '';
-
-  if (navBtn) {
-    navBtn.disabled = true;
-    navBtn.innerHTML = '⏳ Enviando...';
-  }
-  if (closeBtn) {
-    closeBtn.disabled = true;
-    closeBtn.innerHTML = '⏳ Enviando a Google Sheets...';
-  }
-
-  const payload = buildSheetsPayload();
-
-  try {
-    await fetch(webhookUrl, {
-      method: 'POST',
-      mode: 'no-cors',
-      headers: {
-        'Content-Type': 'text/plain;charset=utf-8'
-      },
-      body: JSON.stringify(payload)
-    });
-
-    alert(`✅ ¡Inspección ${payload.folio} enviada exitosamente a Google Sheets!`);
-  } catch (err) {
-    console.error('Error enviando a Google Sheets:', err);
-    alert('No se pudo conectar con Google Sheets. Verifica tu conexión a internet o la URL configurada en ⚙️.');
-  } finally {
-    if (navBtn) {
-      navBtn.disabled = false;
-      navBtn.innerHTML = origNavText;
-    }
-    if (closeBtn) {
-      closeBtn.disabled = false;
-      closeBtn.innerHTML = origCloseText;
-    }
-  }
+function formatStatusLabelForSheet(status) {
+  if (status === 'good') return '✅ ÓPTIMO / BUENO';
+  if (status === 'warn') return '⚠️ REGULAR / MANTENIMIENTO';
+  if (status === 'bad') return '❌ MALO / URGENTE';
+  if (status === 'na') return '➖ NO APLICA';
+  return '⏳ PENDIENTE';
 }
 
-function exportInspectionCSV() {
+function getStatusCellStyle(status, borderObj) {
+  if (status === 'good') {
+    return {
+      fill: { fgColor: { rgb: 'DCFCE7' } },
+      font: { bold: true, color: { rgb: '166534' }, sz: 10, name: 'Calibri' },
+      alignment: { horizontal: 'center', vertical: 'center', wrapText: true },
+      border: borderObj
+    };
+  }
+  if (status === 'warn') {
+    return {
+      fill: { fgColor: { rgb: 'FEF3C7' } },
+      font: { bold: true, color: { rgb: '92400E' }, sz: 10, name: 'Calibri' },
+      alignment: { horizontal: 'center', vertical: 'center', wrapText: true },
+      border: borderObj
+    };
+  }
+  if (status === 'bad') {
+    return {
+      fill: { fgColor: { rgb: 'FEE2E2' } },
+      font: { bold: true, color: { rgb: '991B1B' }, sz: 10, name: 'Calibri' },
+      alignment: { horizontal: 'center', vertical: 'center', wrapText: true },
+      border: borderObj
+    };
+  }
+  return {
+    fill: { fgColor: { rgb: 'F4F4F5' } },
+    font: { bold: false, color: { rgb: '52525B' }, sz: 10, name: 'Calibri' },
+    alignment: { horizontal: 'center', vertical: 'center', wrapText: true },
+    border: borderObj
+  };
+}
+
+/**
+ * Construye el libro de Excel (.xlsx) terminado con 3 pestañas y diseño corporativo.
+ * Devuelve un objeto Blob listo para descargar o compartir directamente a Google Drive.
+ */
+function createFinishedWorkbookBlob() {
   saveState();
   const p = buildSheetsPayload();
-  const headers = [
+
+  if (typeof XLSX === 'undefined') {
+    // Fallback CSV si por alguna razón no cargó la librería
+    exportInspectionCSV();
+    return null;
+  }
+
+  const wb = XLSX.utils.book_new();
+
+  const thinBorder = {
+    top: { style: 'thin', color: { rgb: 'D4D4D8' } },
+    bottom: { style: 'thin', color: { rgb: 'D4D4D8' } },
+    left: { style: 'thin', color: { rgb: 'D4D4D8' } },
+    right: { style: 'thin', color: { rgb: 'D4D4D8' } }
+  };
+
+  const styleBannerBlack = {
+    fill: { fgColor: { rgb: '141414' } },
+    font: { bold: true, color: { rgb: 'FACC15' }, sz: 14, name: 'Calibri' },
+    alignment: { horizontal: 'center', vertical: 'center' }
+  };
+
+  const styleSubBannerGold = {
+    fill: { fgColor: { rgb: 'FEF9C3' } },
+    font: { bold: true, color: { rgb: '18181B' }, sz: 11, name: 'Calibri' },
+    alignment: { horizontal: 'center', vertical: 'center' },
+    border: thinBorder
+  };
+
+  const styleSectionHeader = {
+    fill: { fgColor: { rgb: '27272A' } },
+    font: { bold: true, color: { rgb: 'FFFFFF' }, sz: 11, name: 'Calibri' },
+    alignment: { horizontal: 'left', vertical: 'center' },
+    border: thinBorder
+  };
+
+  const styleLabelCell = {
+    fill: { fgColor: { rgb: 'F4F4F5' } },
+    font: { bold: true, color: { rgb: '18181B' }, sz: 10, name: 'Calibri' },
+    alignment: { horizontal: 'left', vertical: 'center', wrapText: true },
+    border: thinBorder
+  };
+
+  const styleValueCell = {
+    fill: { fgColor: { rgb: 'FFFFFF' } },
+    font: { bold: false, color: { rgb: '18181B' }, sz: 10, name: 'Calibri' },
+    alignment: { horizontal: 'left', vertical: 'center', wrapText: true },
+    border: thinBorder
+  };
+
+  const styleTableHeader = {
+    fill: { fgColor: { rgb: '18181B' } },
+    font: { bold: true, color: { rgb: 'FACC15' }, sz: 10, name: 'Calibri' },
+    alignment: { horizontal: 'center', vertical: 'center', wrapText: true },
+    border: thinBorder
+  };
+
+  // =========================================================================
+  // PESTAÑA 1: FICHA TÉCNICA Y RESUMEN EJECUTIVO
+  // =========================================================================
+  const ws1Data = [
+    ['CLAVE CONSTRUCCIÓN — HOJA OFICIAL DE INSPECCIÓN TÉCNICA DE INMUEBLE', '', '', ''],
+    [`FOLIO: ${p.folio}   |   NIVEL DE SERVICIO: ${p.paquete}   |   FECHA: ${p.fechaVisita} ${p.horaVisita}   |   AVANCE: ${p.avancePorcentaje}`, '', '', ''],
+    ['', '', '', ''],
+    ['1. INFORMACIÓN GENERAL DE LA VISITA Y DEL INMUEBLE', '', '', ''],
+    ['Cliente / Solicitante', p.clienteNombre || '—', 'Teléfono Cliente', p.clienteTelefono || '—'],
+    ['Correo Electrónico', p.clienteCorreo || '—', 'Atendió en Sitio', p.atendioEnSitio || '—'],
+    ['Dirección del Inmueble', p.direccionInmueble || '—', '', ''],
+    ['Coordenadas GPS', p.coordenadasGps || '—', 'Enlace Google Maps', p.googleMapsUrl || '—'],
+    ['Tipo de Propiedad', `${p.tipoInmueble || '—'} (${p.niveles || ''})`, 'Superficie / Antigüedad', `${p.superficieM2 ? p.superficieM2 + ' m²' : '—'} • ${p.antiguedad || '—'}`],
+    ['Motivo de la Visita', p.motivo || '—', 'Clima / Ocupación', `${p.clima || '—'} • ${p.ocupacion || '—'}`],
+    ['Inspector Responsable', p.inspector || 'CLAVE CONSTRUCCIÓN', 'Total Fotos Capturadas', String(p.totalFotos)],
+    ['Áreas / Habitaciones Evaluadas', p.habitacionesEvaluadas || '—', '', ''],
+    ['', '', '', ''],
+    ['2. RESUMEN EJECUTIVO DE CALIFICACIONES', '', '', ''],
+    ['✅ PUNTOS EN ESTADO ÓPTIMO / BUENO', '⚠️ OBSERVACIONES (MANTENIMIENTO REGULAR)', '❌ HALLAZGOS CRÍTICOS / REPARACIÓN URGENTE', 'AVANCE DE REVISIÓN'],
+    [p.puntosBuenos, p.puntosRegulares, p.puntosUrgentesMalos, p.avancePorcentaje],
+    ['', '', '', ''],
+    ['3. LISTADO PRIORITARIO DE HALLAZGOS DETECTADOS (URGENTES Y REGULARES)', '', '', ''],
+    ['Área / Ubicación', 'Elemento Evaluado', 'Prioridad / Estado', 'Detalle del Hallazgo y Opciones Seleccionadas']
+  ];
+
+  const allItems = collectAllActiveItems();
+  const findings = allItems.filter(x => x.entry.status === 'bad' || x.entry.status === 'warn');
+  findings.sort((a, b) => (a.entry.status === 'bad' && b.entry.status !== 'bad' ? -1 : 1));
+
+  const findingsStartRow = ws1Data.length;
+  if (findings.length === 0) {
+    ws1Data.push(['Sin hallazgos críticos ni regulares registrados hasta el momento.', '', '', '']);
+  } else {
+    findings.forEach(f => {
+      const tagsText = Array.isArray(f.entry.selectedTags) && f.entry.selectedTags.length > 0
+        ? `[Opciones: ${f.entry.selectedTags.join(', ')}] `
+        : '';
+      ws1Data.push([
+        f.area,
+        f.title,
+        formatStatusLabelForSheet(f.entry.status),
+        `${tagsText}${f.entry.notes || 'Requiere revisión.'}`
+      ]);
+    });
+  }
+
+  ws1Data.push(['', '', '', '']);
+  const commentsHeaderRow = ws1Data.length;
+  ws1Data.push(['4. COMENTARIOS GENERALES Y DICTAMEN FINAL', '', '', '']);
+  ws1Data.push(['Recomendaciones Generales', p.comentariosGenerales || 'Sin comentarios adicionales.', '', '']);
+
+  if (state.package === 'integral' || state.package === 'premium') {
+    ws1Data.push(['Equipo Dron / Video Aéreo', state.drone?.equipment || '—', 'URL Video Dron', p.dronVideoUrl || '—']);
+    ws1Data.push(['Instrumentación Humedad', state.moisture?.tools || '—', 'Lectura Máx. Humedad', p.humedadLecturaMax || '—']);
+  }
+  if (state.package === 'premium') {
+    ws1Data.push(['Perito Colegiado Responsable', `${p.peritoColegiado || '—'} (${state.premium?.profTitle || ''})`, 'Cédula / Colegio', `${p.cedulaProfesional || '—'} • ${state.premium?.colegio || '—'}`]);
+    ws1Data.push(['Dictamen Legal de Habitabilidad', p.dictamenHabitabilidad || '—', 'URL Tour Virtual 360°', p.tour360Url || '—']);
+    ws1Data.push(['Conclusión Técnica Pericial', state.premium?.conclusion || '—', '', '']);
+  }
+
+  const ws1 = XLSX.utils.aoa_to_sheet(ws1Data);
+
+  // Combinaciones de celdas en Pestaña 1
+  ws1['!merges'] = [
+    { s: { r: 0, c: 0 }, e: { r: 0, c: 3 } },
+    { s: { r: 1, c: 0 }, e: { r: 1, c: 3 } },
+    { s: { r: 3, c: 0 }, e: { r: 3, c: 3 } },
+    { s: { r: 6, c: 1 }, e: { r: 6, c: 3 } },
+    { s: { r: 11, c: 1 }, e: { r: 11, c: 3 } },
+    { s: { r: 13, c: 0 }, e: { r: 13, c: 3 } },
+    { s: { r: 17, c: 0 }, e: { r: 17, c: 3 } },
+    { s: { r: commentsHeaderRow, c: 0 }, e: { r: commentsHeaderRow, c: 3 } },
+    { s: { r: commentsHeaderRow + 1, c: 1 }, e: { r: commentsHeaderRow + 1, c: 3 } }
+  ];
+
+  // Anchos de columna de Pestaña 1
+  ws1['!cols'] = [
+    { wch: 30 },
+    { wch: 38 },
+    { wch: 30 },
+    { wch: 48 }
+  ];
+
+  // Aplicar estilos a Pestaña 1
+  const range1 = XLSX.utils.decode_range(ws1['!ref']);
+  for (let R = range1.s.r; R <= range1.e.r; ++R) {
+    for (let C = range1.s.c; C <= range1.e.c; ++C) {
+      const addr = XLSX.utils.encode_cell({ r: R, c: C });
+      if (!ws1[addr]) ws1[addr] = { t: 's', v: '' };
+
+      if (R === 0) {
+        ws1[addr].s = styleBannerBlack;
+      } else if (R === 1) {
+        ws1[addr].s = styleSubBannerGold;
+      } else if (R === 3 || R === 13 || R === 17 || R === commentsHeaderRow) {
+        ws1[addr].s = styleSectionHeader;
+      } else if (R >= 4 && R <= 11) {
+        ws1[addr].s = (C === 0 || C === 2) ? styleLabelCell : styleValueCell;
+        if (R === 6 && C >= 1) ws1[addr].s = styleValueCell;
+        if (R === 11 && C >= 1) ws1[addr].s = styleValueCell;
+      } else if (R === 14) {
+        ws1[addr].s = styleTableHeader;
+      } else if (R === 15) {
+        if (C === 0) ws1[addr].s = getStatusCellStyle('good', thinBorder);
+        else if (C === 1) ws1[addr].s = getStatusCellStyle('warn', thinBorder);
+        else if (C === 2) ws1[addr].s = getStatusCellStyle('bad', thinBorder);
+        else ws1[addr].s = { ...styleSubBannerGold };
+      } else if (R === 18) {
+        ws1[addr].s = styleTableHeader;
+      } else if (R >= findingsStartRow && R < commentsHeaderRow - 1) {
+        if (findings.length > 0 && C === 2) {
+          const fItem = findings[R - findingsStartRow];
+          ws1[addr].s = getStatusCellStyle(fItem?.entry?.status, thinBorder);
+        } else {
+          ws1[addr].s = C === 0 ? styleLabelCell : styleValueCell;
+        }
+      } else if (R > commentsHeaderRow) {
+        ws1[addr].s = (C === 0 || C === 2) ? styleLabelCell : styleValueCell;
+        if (R === commentsHeaderRow + 1 && C >= 1) ws1[addr].s = styleValueCell;
+      }
+    }
+  }
+
+  XLSX.utils.book_append_sheet(wb, ws1, '1_Ficha_y_Resumen');
+
+  // =========================================================================
+  // PESTAÑA 2: CHECKLIST COMPLETO POR ÁREA Y HABITACIÓN
+  // =========================================================================
+  const ws2Data = [
+    ['CLAVE CONSTRUCCIÓN — DESGLOSE COMPLETO DE PUNTOS EVALUADOS POR ÁREA Y HABITACIÓN', '', '', '', '', '', '', ''],
+    [`FOLIO: ${p.folio}   |   CLIENTE: ${p.clienteNombre || '—'}   |   DIRECCIÓN: ${p.direccionInmueble || '—'}`, '', '', '', '', '', '', ''],
+    ['N.º', 'Módulo', 'Área / Habitación', 'Especialidad / Categoría', 'Elemento Evaluado', 'Estado / Calificación', 'Opciones Marcadas (✓)', 'Observaciones y Hallazgos en Sitio']
+  ];
+
+  const rowStatuses = [];
+  let itemCounter = 1;
+
+  // 1) Equipos Centrales
+  SYSTEMS_SCHEMA.forEach(cat => {
+    cat.items.forEach(item => {
+      const entry = state.systems[item.id] || {};
+      const tags = Array.isArray(entry.selectedTags) ? entry.selectedTags.join(', ') : '';
+      ws2Data.push([
+        itemCounter++,
+        '1. Equipos Centrales',
+        'Equipos Centrales y Exterior',
+        cat.categoryTitle,
+        item.title,
+        formatStatusLabelForSheet(entry.status),
+        tags || '—',
+        entry.notes || '—'
+      ]);
+      rowStatuses.push(entry.status || '');
+    });
+  });
+
+  // 2) Habitaciones / Áreas (Opción B)
+  state.rooms.forEach(room => {
+    const cats = getActiveCategoriesForRoom(room);
+    cats.forEach(cat => {
+      cat.items.forEach(item => {
+        const entry = room.items[item.id] || {};
+        const tags = Array.isArray(entry.selectedTags) ? entry.selectedTags.join(', ') : '';
+        ws2Data.push([
+          itemCounter++,
+          '2. Habitaciones / Áreas',
+          room.name,
+          cat.categoryTitle,
+          item.title,
+          formatStatusLabelForSheet(entry.status),
+          tags || '—',
+          entry.notes || '—'
+        ]);
+        rowStatuses.push(entry.status || '');
+      });
+    });
+  });
+
+  // 3) Dron y Humedad (si es Integral o Premium)
+  if (state.package === 'integral' || state.package === 'premium') {
+    DRONE_SCHEMA.forEach(item => {
+      const entry = state.drone.items[item.id] || {};
+      const tags = Array.isArray(entry.selectedTags) ? entry.selectedTags.join(', ') : '';
+      ws2Data.push([
+        itemCounter++,
+        '3. Inspección con Dron',
+        'Azotea y Fachadas Altas',
+        'Revisión Aérea con Dron',
+        item.title,
+        formatStatusLabelForSheet(entry.status),
+        tags || '—',
+        entry.notes || '—'
+      ]);
+      rowStatuses.push(entry.status || '');
+    });
+
+    MOISTURE_SCHEMA.forEach(item => {
+      const entry = state.moisture.items[item.id] || {};
+      const tags = Array.isArray(entry.selectedTags) ? entry.selectedTags.join(', ') : '';
+      ws2Data.push([
+        itemCounter++,
+        '4. Humedad y Filtraciones',
+        'Zonas Críticas / Difícil Acceso',
+        'Diagnóstico de Humedad',
+        item.title,
+        formatStatusLabelForSheet(entry.status),
+        tags || '—',
+        entry.notes || '—'
+      ]);
+      rowStatuses.push(entry.status || '');
+    });
+  }
+
+  const ws2 = XLSX.utils.aoa_to_sheet(ws2Data);
+  ws2['!merges'] = [
+    { s: { r: 0, c: 0 }, e: { r: 0, c: 7 } },
+    { s: { r: 1, c: 0 }, e: { r: 1, c: 7 } }
+  ];
+  ws2['!cols'] = [
+    { wch: 6 },
+    { wch: 22 },
+    { wch: 26 },
+    { wch: 28 },
+    { wch: 34 },
+    { wch: 26 },
+    { wch: 36 },
+    { wch: 46 }
+  ];
+
+  const range2 = XLSX.utils.decode_range(ws2['!ref']);
+  for (let R = range2.s.r; R <= range2.e.r; ++R) {
+    for (let C = range2.s.c; C <= range2.e.c; ++C) {
+      const addr = XLSX.utils.encode_cell({ r: R, c: C });
+      if (!ws2[addr]) ws2[addr] = { t: 's', v: '' };
+
+      if (R === 0) {
+        ws2[addr].s = styleBannerBlack;
+      } else if (R === 1) {
+        ws2[addr].s = styleSubBannerGold;
+      } else if (R === 2) {
+        ws2[addr].s = styleTableHeader;
+      } else {
+        const st = rowStatuses[R - 3];
+        if (C === 5) {
+          ws2[addr].s = getStatusCellStyle(st, thinBorder);
+        } else if (C === 0) {
+          ws2[addr].s = { ...styleLabelCell, alignment: { horizontal: 'center', vertical: 'center' } };
+        } else if (C === 2 || C === 4) {
+          ws2[addr].s = styleLabelCell;
+        } else {
+          ws2[addr].s = styleValueCell;
+        }
+      }
+    }
+  }
+
+  XLSX.utils.book_append_sheet(wb, ws2, '2_Checklist_Completo');
+
+  // =========================================================================
+  // PESTAÑA 3: FILA CONCENTRADA (PARA BASE DE DATOS HISTÓRICA)
+  // =========================================================================
+  const headers3 = [
     'Fecha Registro', 'Folio', 'Paquete', 'Fecha Visita', 'Hora', 'Motivo',
-    'Cliente', 'Telefono', 'Correo', 'Atendio en Sitio', 'Direccion Inmueble',
+    'Cliente', 'Teléfono', 'Correo', 'Atendió en Sitio', 'Dirección Inmueble',
     'Coordenadas GPS', 'Google Maps URL',
-    'Tipo Inmueble', 'Superficie m2', 'Niveles', 'Antiguedad', 'Ocupacion',
+    'Tipo Inmueble', 'Superficie m2', 'Niveles', 'Antigüedad', 'Ocupación',
     'Clima', 'Inspector', 'Avance', 'Puntos Buenos', 'Puntos Regulares',
     'Puntos Urgentes (Malos)', 'Total Fotos', 'Habitaciones Evaluadas',
-    'Hallazgos Urgentes', 'Hallazgos Regulares', 'URL Dron', 'Lectura Max Humedad',
-    'URL Tour 360', 'Perito Colegiado', 'Cedula Profesional', 'Dictamen Legal',
+    'Hallazgos Urgentes', 'Hallazgos Regulares', 'URL Dron', 'Lectura Máx Humedad',
+    'URL Tour 360', 'Perito Colegiado', 'Cédula Profesional', 'Dictamen Legal',
     'Comentarios Generales'
   ];
 
-  const values = [
+  const values3 = [
     p.timestamp, p.folio, p.paquete, p.fechaVisita, p.horaVisita, p.motivo,
     p.clienteNombre, p.clienteTelefono, p.clienteCorreo, p.atendioEnSitio, p.direccionInmueble,
     p.coordenadasGps, p.googleMapsUrl,
@@ -2544,107 +2871,82 @@ function exportInspectionCSV() {
     p.comentariosGenerales
   ];
 
-  const escapeCsvCell = (val) => {
-    const s = String(val ?? '').replace(/"/g, '""');
-    return `"${s}"`;
-  };
+  const ws3 = XLSX.utils.aoa_to_sheet([headers3, values3]);
+  ws3['!cols'] = headers3.map(() => ({ wch: 24 }));
+  for (let C = 0; C < headers3.length; C++) {
+    const hAddr = XLSX.utils.encode_cell({ r: 0, c: C });
+    const vAddr = XLSX.utils.encode_cell({ r: 1, c: C });
+    if (ws3[hAddr]) ws3[hAddr].s = styleTableHeader;
+    if (ws3[vAddr]) ws3[vAddr].s = styleValueCell;
+  }
 
-  // BOM UTF-8 (\uFEFF) para que Excel en Windows abra acentos y ñ perfectamente
-  const csvContent = '\uFEFF' + headers.map(escapeCsvCell).join(',') + '\r\n' + values.map(escapeCsvCell).join(',') + '\r\n';
-  const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+  XLSX.utils.book_append_sheet(wb, ws3, '3_Fila_Concentrado');
+
+  const wbout = XLSX.write(wb, { bookType: 'xlsx', type: 'array' });
+  return new Blob([wbout], {
+    type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+  });
+}
+
+function downloadFinishedExcelWorkbook() {
+  const blob = createFinishedWorkbookBlob();
+  if (!blob) return;
+
+  const filename = getSafeWorkbookFilename();
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
-  const safeFolio = (state.meta.folio || 'inspeccion').replace(/[^a-zA-Z0-9_-]/g, '_');
   a.href = url;
-  a.download = `${safeFolio}_CLAVE_Excel.csv`;
+  a.download = filename;
   document.body.appendChild(a);
   a.click();
   a.remove();
   URL.revokeObjectURL(url);
+
+  showToast(`📊 Hoja terminada descargada: ${filename}`, 'success');
 }
 
-function copyGoogleAppsScriptCode() {
-  const scriptCode = `// ============================================================================
-// SCRIPT PARA GOOGLE SHEETS - CLAVE CONSTRUCCIÓN
-// Instrucciones: Pega este código en Extensiones -> Apps Script y publícalo
-// como Aplicación Web con acceso para "Cualquier persona".
-// ============================================================================
+function exportFinishedWorkbookAndDrive() {
+  // 1. Descarga de inmediato la hoja .xlsx ya terminada
+  downloadFinishedExcelWorkbook();
+  // 2. Abre el panel de subida directa a Google Drive
+  openSheetsConfigModal();
+}
 
-function doPost(e) {
-  var sheet = SpreadsheetApp.getActiveSpreadsheet().getActiveSheet();
-  var data = JSON.parse(e.postData.contents);
+async function shareWorkbookToDriveApp() {
+  const blob = createFinishedWorkbookBlob();
+  if (!blob) return;
 
-  var headers = [
-    "Fecha Envío", "Folio", "Paquete", "Fecha Visita", "Hora", "Motivo",
-    "Cliente", "Teléfono", "Correo", "Atendió en Sitio", "Dirección del Inmueble",
-    "Coordenadas GPS", "Google Maps URL",
-    "Tipo Inmueble", "Superficie m2", "Niveles", "Antigüedad", "Ocupación",
-    "Clima", "Inspector", "Avance", "Puntos Buenos", "Puntos Regulares",
-    "Puntos Urgentes (Malos)", "Total Fotos", "Habitaciones Evaluadas",
-    "Hallazgos Urgentes", "Hallazgos Regulares", "URL Video Dron",
-    "Lectura Máx Humedad", "URL Tour 360", "Perito Colegiado",
-    "Cédula Profesional", "Dictamen Habitabilidad", "Comentarios Generales"
-  ];
+  const filename = getSafeWorkbookFilename();
+  const file = new File([blob], filename, {
+    type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+  });
 
-  // Si la hoja está vacía, crea la fila de encabezados con formato
-  if (sheet.getLastRow() === 0) {
-    sheet.appendRow(headers);
-    sheet.getRange(1, 1, 1, headers.length)
-      .setBackground("#141414")
-      .setFontColor("#FFFFFF")
-      .setFontWeight("bold");
-    sheet.setFrozenRows(1);
+  if (navigator.canShare && navigator.canShare({ files: [file] })) {
+    try {
+      await navigator.share({
+        title: `Inspección ${state.meta.folio || 'CLAVE'}`,
+        text: `Hoja oficial de inspección técnica (${state.meta.folio || ''}) - CLAVE CONSTRUCCIÓN`,
+        files: [file]
+      });
+      showToast('☁️ Archivo enviado correctamente', 'success');
+      return;
+    } catch (err) {
+      if (err.name === 'AbortError') return;
+    }
   }
 
-  var row = [
-    data.timestamp || new Date().toLocaleString(),
-    data.folio || "",
-    data.paquete || "",
-    data.fechaVisita || "",
-    data.horaVisita || "",
-    data.motivo || "",
-    data.clienteNombre || "",
-    data.clienteTelefono || "",
-    data.clienteCorreo || "",
-    data.atendioEnSitio || "",
-    data.direccionInmueble || "",
-    data.coordenadasGps || "",
-    data.googleMapsUrl || "",
-    data.tipoInmueble || "",
-    data.superficieM2 || "",
-    data.niveles || "",
-    data.antiguedad || "",
-    data.ocupacion || "",
-    data.clima || "",
-    data.inspector || "",
-    data.avancePorcentaje || "",
-    data.puntosBuenos || 0,
-    data.puntosRegulares || 0,
-    data.puntosUrgentesMalos || 0,
-    data.totalFotos || 0,
-    data.habitacionesEvaluadas || "",
-    data.hallazgosUrgentes || "",
-    data.hallazgosRegulares || "",
-    data.dronVideoUrl || "",
-    data.humedadLecturaMax || "",
-    data.tour360Url || "",
-    data.peritoColegiado || "",
-    data.cedulaProfesional || "",
-    data.dictamenHabitabilidad || "",
-    data.comentariosGenerales || ""
-  ];
+  // Si está en computadora o el navegador no soporta share de archivos, abre Google Drive y descarga
+  openDriveFolderAndDownload();
+}
 
-  sheet.appendRow(row);
+function openDriveFolderAndDownload() {
+  const driveUrl = getDriveFolderUrl();
+  window.open(driveUrl, '_blank', 'noopener,noreferrer');
+  showToast('☁️ Google Drive abierto. Arrastra ahí la hoja .xlsx descargada', 'info');
+}
 
-  return ContentService.createTextOutput(JSON.stringify({ status: "ok", folio: data.folio }))
-    .setMimeType(ContentService.MimeType.JSON);
-}`;
-
-  navigator.clipboard.writeText(scriptCode).then(() => {
-    alert('✅ ¡Código copiado al portapapeles! Ahora abre tu Google Sheet -> Extensiones -> Apps Script y pégalo.');
-  }).catch(() => {
-    prompt('Copia este código y pégalo en Extensiones -> Apps Script de tu Google Sheet:', scriptCode);
-  });
+function exportInspectionCSV() {
+  downloadFinishedExcelWorkbook();
 }
 
 // ============================================================================
