@@ -15,19 +15,19 @@ const SYSTEMS_SCHEMA = [
         id: 'tablero_estado',
         title: 'Centro de carga / Tablero eléctrico principal',
         hint: 'Estado físico del gabinete, tapa frontal, interruptores termomagnéticos (pastillas) en buen estado y acordes al calibre.',
-        tags: ['Sin directorio de circuitos', 'Tapa faltante', 'Pastilla dañada', 'Marcas de calentamiento', 'Sobrecarga en pastilla']
+        tags: ['Gabinete y tapa completos', 'Circuitos identificados', 'Pastillas en buen estado', 'Sin directorio de circuitos', 'Tapa faltante', 'Pastilla dañada', 'Marcas de calentamiento', 'Sobrecarga en pastilla']
       },
       {
         id: 'tablero_cableado',
         title: 'Cableado interno, conexiones y puesta a tierra',
         hint: 'Ausencia de empalmes improvisados, cables sueltos, aislamiento derretido; presencia de barra de tierra física.',
-        tags: ['Sin tierra física', 'Cables mal empalmados', 'Cables expuestos fuera de tubería', 'Calibre inadecuado aparente']
+        tags: ['Cableado ordenado y peinado', 'Con barra de tierra física', 'Sin tierra física', 'Cables mal empalmados', 'Cables expuestos fuera de tubería', 'Calibre inadecuado aparente']
       },
       {
         id: 'acometida_medidor',
         title: 'Acometida eléctrica, mufa y base de medidor',
         hint: 'Estado visual exterior de la acometida, interruptor general de cuchillas/principal y sujeción en muro.',
-        tags: ['Mufa inclinada', 'Filtración en base de medidor', 'Interruptor principal oxidado']
+        tags: ['Acometida y medidor en orden', 'Mufa inclinada', 'Filtración en base de medidor', 'Interruptor principal oxidado']
       }
     ]
   },
@@ -39,25 +39,25 @@ const SYSTEMS_SCHEMA = [
         id: 'boiler_calentador',
         title: 'Calentador de agua (Boiler) y conexiones',
         hint: 'Encendido, estado del tanque (sin corrosión ni goteo), válvula de alivio, ventilación adecuada y llave de gas sin fugas.',
-        tags: ['Fuga en conexiones', 'Sin tiro / mala ventilación', 'Piloto no enciende', 'Corrosión en base', 'Falta válvula de alivio']
+        tags: ['Operando correctamente', 'Buena ventilación', 'Fuga en conexiones', 'Sin tiro / mala ventilación', 'Piloto no enciende', 'Corrosión en base', 'Falta válvula de alivio']
       },
       {
         id: 'bomba_hidro',
         title: 'Bomba de agua / Sistema hidroneumático / Presurizador',
         hint: 'Arranque automático, nivel de ruido, manómetro de presión, ausencia de fugas en sellos o válvulas check.',
-        tags: ['Fuga en sello mecánico', 'No arranca en automático', 'Ruido excesivo en baleros', 'Tanque precargado sin presión']
+        tags: ['Arranque y presión normal', 'Fuga en sello mecánico', 'No arranca en automático', 'Ruido excesivo en baleros', 'Tanque precargado sin presión']
       },
       {
         id: 'tinaco_cisterna',
         title: 'Tinaco y/o Cisterna (Acceso normal)',
         hint: 'Estado interior/limpieza aparente, tapa segura, funcionamiento de válvula de llenado, flotador y jarro de aire.',
-        tags: ['Tapa rota o faltante', 'Flotador desajustado', 'Sedimento / requiere lavado', 'Fisura en muros de cisterna']
+        tags: ['Limpio y con tapa segura', 'Flotador operando bien', 'Tapa rota o faltante', 'Flotador desajustado', 'Sedimento / requiere lavado', 'Fisura en muros de cisterna']
       },
       {
         id: 'medidor_agua_gas',
         title: 'Cuadro de medidor de agua, llave de paso general e instalación de gas aparente',
         hint: 'Ausencia de fugas en medidor hidráulico; tubería de gas pintada/identificada, regulador y llaves de corte funcionales.',
-        tags: ['Goteo en llave de paso general', 'Tubería de gas con oxidación', 'Regulador antiguo', 'Falta llave de corte accesible']
+        tags: ['Sin fugas aparentes', 'Llaves de corte operativas', 'Goteo en llave de paso general', 'Tubería de gas con oxidación', 'Regulador antiguo', 'Falta llave de corte accesible']
       }
     ]
   },
@@ -69,19 +69,19 @@ const SYSTEMS_SCHEMA = [
         id: 'fachada_muros',
         title: 'Muros exteriores, fachada y bardas perimetrales',
         hint: 'Revisión de grietas estructurales, fisuras en repello, desplomes en bardas o separación en juntas constructivas.',
-        tags: ['Fisuras superficiales en fachada', 'Grieta diagonal en muro exterior', 'Barda perimetral con desplome', 'Humedad en base de fachada']
+        tags: ['Muros aplomados y sin grietas', 'Fisuras superficiales en fachada', 'Grieta diagonal en muro exterior', 'Barda perimetral con desplome', 'Humedad en base de fachada']
       },
       {
         id: 'estructura_ext',
         title: 'Columnas, trabes, voladizos y marquesinas exteriores',
         hint: 'Alineación visual, ausencia de flechas pronunciadas en voladizos, recubrimiento de concreto sin acero expuesto.',
-        tags: ['Acero de refuerzo expuesto', 'Desprendimiento de recubrimiento', 'Grieta en unión trabe-columna']
+        tags: ['Sin daño estructural visible', 'Acero de refuerzo expuesto', 'Desprendimiento de recubrimiento', 'Grieta en unión trabe-columna']
       },
       {
         id: 'accesos_pisos_ext',
         title: 'Banquetas, firme de cochera y portón / puerta principal de acceso',
         hint: 'Hundimientos o grietas por asentamiento en pisos exteriores; operación de portón vehicular y cerradura peatonal.',
-        tags: ['Hundimiento en firme exterior', 'Portón roza o descuadrado', 'Pendiente pluvial hacia el interior']
+        tags: ['Pisos nivelados y portón funcional', 'Hundimiento en firme exterior', 'Portón roza o descuadrado', 'Pendiente pluvial hacia el interior']
       }
     ]
   }
@@ -327,7 +327,8 @@ function createDefaultState() {
 
   return {
     id: 'insp_' + Date.now(),
-    package: 'integral', // 'esencial' | 'integral' | 'premium'
+    package: null, // Se fija al seleccionar: 'esencial' | 'integral' | 'premium'
+    packageLocked: false,
     activeTab: 'tab-general',
     activeRoomId: defaultRooms[0].id,
     meta: {
@@ -350,7 +351,7 @@ function createDefaultState() {
       coverPhoto: null,
       generalNotes: ''
     },
-    systems: {}, // { [itemId]: { status, notes, photos: [] } }
+    systems: {}, // { [itemId]: { status, notes, selectedTags: [], photos: [] } }
     rooms: defaultRooms,
     drone: {
       equipment: '',
@@ -390,7 +391,7 @@ function createRoomObject(type, name, hasPlumbing) {
     name,
     hasPlumbing: Boolean(hasPlumbing),
     generalObservation: '',
-    items: {} // { [itemId]: { status: ''|'good'|'warn'|'bad'|'na', notes: '', photos: [] } }
+    items: {} // { [itemId]: { status: ''|'good'|'warn'|'bad'|'na', notes: '', selectedTags: [], photos: [] } }
   };
 }
 
@@ -503,7 +504,7 @@ function renderHistoryModalList() {
   }
 
   container.innerHTML = list.map(item => {
-    const pkgName = (item.package || 'esencial').toUpperCase();
+    const pkgName = (item.package || 'sin seleccionar').toUpperCase();
     const client = item.meta?.clientName || 'Sin nombre de cliente';
     const addr = item.meta?.address || 'Sin dirección';
     return `
@@ -542,7 +543,7 @@ function deleteFromHistory(id) {
 }
 
 function resetNewInspection() {
-  if (!confirm('¿Iniciar una nueva visita de inspección en blanco? (Puedes guardar la actual antes en "Mis Inspecciones").')) return;
+  if (!confirm('¿Iniciar una nueva visita de inspección en blanco? Esto desbloqueará la selección de paquete para la nueva visita.')) return;
   state = createDefaultState();
   clearSignature('inspector', true);
   clearSignature('client', true);
@@ -588,56 +589,80 @@ function importInspectionJSON(event) {
 }
 
 // ============================================================================
-// SELECCIÓN DE PAQUETE Y NAVEGACIÓN DE PESTAÑAS
+// SELECCIÓN DE PAQUETE (BLOQUEO UNA VEZ SELECCIONADO) Y PESTAÑAS
 // ============================================================================
 
 function selectPackage(pkg) {
+  // Si el paquete ya fue bloqueado en esta visita, no permitir cambiarlo
+  if (state.packageLocked && state.package) {
+    return;
+  }
   state.package = pkg;
+  state.packageLocked = true;
   saveState();
   syncPackageUI();
-  renderActiveRoomPanel(); // Actualiza si muestra u oculta el bloque de humedad por habitación
+  renderActiveRoomPanel();
   renderFindingsSummary();
 }
 
 function syncPackageUI() {
+  const isLocked = Boolean(state.packageLocked && state.package);
+
   ['esencial', 'integral', 'premium'].forEach(p => {
     const card = document.getElementById(`pkg-card-${p}`);
-    if (card) {
-      card.classList.toggle('active', state.package === p);
-    }
+    if (!card) return;
+    const isSelected = state.package === p && isLocked;
+    card.classList.toggle('active', isSelected);
+    card.classList.toggle('disabled-pkg', isLocked && state.package !== p);
   });
 
+  const lockStatusEl = document.getElementById('pkg-lock-status');
+  if (lockStatusEl) {
+    if (isLocked) {
+      lockStatusEl.innerHTML = `<span class="package-locked-pill">🔒 Tipo de formulario fijado: ${state.package.toUpperCase()} (No se puede cambiar)</span>`;
+    } else {
+      lockStatusEl.innerHTML = `<span>👆 Selecciona primero el nivel de servicio (una vez elegido no se podrá cambiar)</span>`;
+    }
+  }
+
   const pkgNames = {
-    esencial: 'Paquete: Esencial',
-    integral: 'Paquete: Integral (Con Dron y Humedad)',
-    premium: 'Paquete: Premium (Con Dron, Humedad, 360° y Dictamen Legal)'
+    esencial: 'Paquete Fijo: Esencial',
+    integral: 'Paquete Fijo: Integral (Con Dron y Humedad)',
+    premium: 'Paquete Fijo: Premium (Completo + Dictamen Legal)'
   };
   const bottomInd = document.getElementById('bottom-pkg-indicator');
-  if (bottomInd) bottomInd.textContent = pkgNames[state.package] || '';
+  if (bottomInd) {
+    bottomInd.textContent = isLocked ? (pkgNames[state.package] || '') : 'Paquete: Pendiente de elegir';
+  }
 
-  // Bloqueos visuales en pestañas 4 (Integral+) y 5 (Premium)
-  const isIntegralOrHigher = state.package === 'integral' || state.package === 'premium';
-  const isPremium = state.package === 'premium';
+  // Mostrar/ocultar pestañas según el paquete seleccionado
+  const effectivePkg = state.package || 'esencial';
+  const isIntegralOrHigher = effectivePkg === 'integral' || effectivePkg === 'premium';
+  const isPremium = effectivePkg === 'premium';
 
   const tabIntegral = document.getElementById('nav-tab-integral');
   const tabPremium = document.getElementById('nav-tab-premium');
-  if (tabIntegral) tabIntegral.classList.toggle('locked', !isIntegralOrHigher);
-  if (tabPremium) tabPremium.classList.toggle('locked', !isPremium);
+  if (tabIntegral) {
+    tabIntegral.style.display = isIntegralOrHigher ? 'inline-flex' : 'none';
+  }
+  if (tabPremium) {
+    tabPremium.style.display = isPremium ? 'inline-flex' : 'none';
+  }
 
   const intBanner = document.getElementById('integral-locked-banner');
   const intContent = document.getElementById('integral-content-wrapper');
   if (intBanner && intContent) {
-    intBanner.style.display = isIntegralOrHigher ? 'none' : 'block';
-    intContent.style.opacity = isIntegralOrHigher ? '1' : '0.45';
-    intContent.style.pointerEvents = isIntegralOrHigher ? 'auto' : 'none';
+    intBanner.style.display = 'none';
+    intContent.style.opacity = '1';
+    intContent.style.pointerEvents = 'auto';
   }
 
   const premBanner = document.getElementById('premium-locked-banner');
   const premContent = document.getElementById('premium-content-wrapper');
   if (premBanner && premContent) {
-    premBanner.style.display = isPremium ? 'none' : 'block';
-    premContent.style.opacity = isPremium ? '1' : '0.45';
-    premContent.style.pointerEvents = isPremium ? 'auto' : 'none';
+    premBanner.style.display = 'none';
+    premContent.style.opacity = '1';
+    premContent.style.pointerEvents = 'auto';
   }
 
   const sigLabel = document.getElementById('sig-inspector-label');
@@ -1118,16 +1143,25 @@ function updateModuleField(mod, field, value) {
 // ============================================================================
 
 function renderChecklistItemHTML(scope, itemSchema, entryData) {
-  const entry = entryData || { status: '', notes: '', photos: [] };
+  const entry = entryData || { status: '', notes: '', selectedTags: [], photos: [] };
   const st = entry.status || '';
   const notes = entry.notes || '';
+  const selectedTags = Array.isArray(entry.selectedTags) ? entry.selectedTags : [];
   const photos = entry.photos || [];
+  const isAnswered = Boolean(st || selectedTags.length > 0);
 
-  const tagsHTML = (itemSchema.tags || []).map(tag => `
-    <button type="button" class="chip" onclick="appendQuickTag('${scope}', '${itemSchema.id}', '${escapeAttr(tag)}')">
-      + ${escapeHtml(tag)}
-    </button>
-  `).join('');
+  const tagsHTML = (itemSchema.tags || []).map(tag => {
+    const isSelected = selectedTags.includes(tag) || (notes && notes.includes(tag));
+    return `
+      <button
+        type="button"
+        class="chip ${isSelected ? 'selected-green' : ''}"
+        onclick="appendQuickTag('${scope}', '${itemSchema.id}', '${escapeAttr(tag)}')"
+      >
+        ${isSelected ? '✓' : '+'} ${escapeHtml(tag)}
+      </button>
+    `;
+  }).join('');
 
   const photosHTML = photos.map((photoUrl, idx) => `
     <div class="photo-thumb-card">
@@ -1137,7 +1171,7 @@ function renderChecklistItemHTML(scope, itemSchema, entryData) {
   `).join('');
 
   return `
-    <div class="checklist-item" id="item-${scope}-${itemSchema.id}">
+    <div class="checklist-item ${isAnswered ? 'answered-row' : ''}" id="item-${scope}-${itemSchema.id}">
       <div class="checklist-item-top">
         <div class="item-info">
           <div class="item-title">${escapeHtml(itemSchema.title)}</div>
@@ -1163,7 +1197,7 @@ function renderChecklistItemHTML(scope, itemSchema, entryData) {
       <div class="item-details-drawer">
         ${tagsHTML ? `
           <div class="quick-tags">
-            <span class="quick-tags-label">Hallazgos rápidos:</span>
+            <span class="quick-tags-label">Opciones múltiples:</span>
             ${tagsHTML}
           </div>
         ` : ''}
@@ -1173,7 +1207,7 @@ function renderChecklistItemHTML(scope, itemSchema, entryData) {
             type="text"
             class="item-notes-input"
             id="note-input-${scope}-${itemSchema.id}"
-            placeholder="Observaciones o ubicación exacta del hallazgo..."
+            placeholder="Observaciones adicionales o ubicación exacta..."
             value="${escapeHtml(notes)}"
             oninput="setItemNotes('${scope}', '${itemSchema.id}', this.value)"
           />
@@ -1197,22 +1231,26 @@ function renderChecklistItemHTML(scope, itemSchema, entryData) {
 
 function getTargetRecord(scope, itemId) {
   if (scope === 'systems') {
-    if (!state.systems[itemId]) state.systems[itemId] = { status: '', notes: '', photos: [] };
+    if (!state.systems[itemId]) state.systems[itemId] = { status: '', notes: '', selectedTags: [], photos: [] };
+    if (!Array.isArray(state.systems[itemId].selectedTags)) state.systems[itemId].selectedTags = [];
     return state.systems[itemId];
   }
   if (scope === 'drone') {
-    if (!state.drone.items[itemId]) state.drone.items[itemId] = { status: '', notes: '', photos: [] };
+    if (!state.drone.items[itemId]) state.drone.items[itemId] = { status: '', notes: '', selectedTags: [], photos: [] };
+    if (!Array.isArray(state.drone.items[itemId].selectedTags)) state.drone.items[itemId].selectedTags = [];
     return state.drone.items[itemId];
   }
   if (scope === 'moisture') {
-    if (!state.moisture.items[itemId]) state.moisture.items[itemId] = { status: '', notes: '', photos: [] };
+    if (!state.moisture.items[itemId]) state.moisture.items[itemId] = { status: '', notes: '', selectedTags: [], photos: [] };
+    if (!Array.isArray(state.moisture.items[itemId].selectedTags)) state.moisture.items[itemId].selectedTags = [];
     return state.moisture.items[itemId];
   }
   if (scope.startsWith('room:')) {
     const roomId = scope.split(':')[1];
     const room = state.rooms.find(r => r.id === roomId);
     if (!room) return null;
-    if (!room.items[itemId]) room.items[itemId] = { status: '', notes: '', photos: [] };
+    if (!room.items[itemId]) room.items[itemId] = { status: '', notes: '', selectedTags: [], photos: [] };
+    if (!Array.isArray(room.items[itemId].selectedTags)) room.items[itemId].selectedTags = [];
     return room.items[itemId];
   }
   return null;
@@ -1245,20 +1283,57 @@ function setItemNotes(scope, itemId, text) {
 function appendQuickTag(scope, itemId, tagText) {
   const rec = getTargetRecord(scope, itemId);
   if (!rec) return;
-  if (!rec.notes) {
-    rec.notes = tagText;
-  } else if (!rec.notes.includes(tagText)) {
-    rec.notes = `${rec.notes.trim().replace(/\.$/, '')}; ${tagText}`;
-  }
-  // Si aún no tiene estado asignado y agrega un defecto rápido, sugerir "Regular" salvo que diga "Sin " o "buen estado"
-  if (!rec.status) {
-    const lower = tagText.toLowerCase();
-    if (lower.includes('buen estado') || lower.includes('limpios') || lower.includes('íntegros') || lower.includes('sin presencia') || lower.includes('sin humedad') || lower.includes('seco')) {
-      rec.status = 'good';
-    } else {
-      rec.status = 'warn';
+
+  const isAlreadySelected = rec.selectedTags.includes(tagText) || (rec.notes && rec.notes.includes(tagText));
+
+  if (isAlreadySelected) {
+    // Deseleccionar opción
+    rec.selectedTags = rec.selectedTags.filter(t => t !== tagText);
+    if (rec.notes) {
+      const parts = rec.notes.split(';').map(s => s.trim()).filter(Boolean);
+      const filtered = parts.filter(p => p !== tagText);
+      rec.notes = filtered.join('; ');
+    }
+  } else {
+    // Seleccionar opción (se marca en verde)
+    rec.selectedTags.push(tagText);
+    if (!rec.notes) {
+      rec.notes = tagText;
+    } else if (!rec.notes.includes(tagText)) {
+      rec.notes = `${rec.notes.trim().replace(/\.$/, '')}; ${tagText}`;
+    }
+
+    // Si aún no tiene estado asignado, asignar estado automático acorde a la opción
+    if (!rec.status) {
+      const lower = tagText.toLowerCase();
+      if (
+        lower.includes('buen estado') ||
+        lower.includes('completos') ||
+        lower.includes('identificados') ||
+        lower.includes('ordenado') ||
+        lower.includes('con barra de tierra') ||
+        lower.includes('en orden') ||
+        lower.includes('operando') ||
+        lower.includes('buena') ||
+        lower.includes('normal') ||
+        lower.includes('limpio') ||
+        lower.includes('sin fugas') ||
+        lower.includes('operativas') ||
+        lower.includes('aplomados') ||
+        lower.includes('sin daño') ||
+        lower.includes('nivelados') ||
+        lower.includes('íntegros') ||
+        lower.includes('sin presencia') ||
+        lower.includes('sin humedad') ||
+        lower.includes('seco')
+      ) {
+        rec.status = 'good';
+      } else {
+        rec.status = 'warn';
+      }
     }
   }
+
   saveState();
   refreshScopeUI(scope);
 }
