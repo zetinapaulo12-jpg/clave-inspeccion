@@ -6,7 +6,7 @@
   <title>CLAVE CONSTRUCCIÓN | Sistema Digital de Inspección Técnica</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Plus+Jakarta+Sans:wght@600;700;800&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="styles.css" />
 </head>
 <body>
@@ -26,7 +26,7 @@
         <button type="button" class="btn btn-outline btn-sm" onclick="openHistoryModal()">
           📂 Mis Inspecciones (<span id="saved-count">0</span>)
         </button>
-        <button type="button" class="btn btn-outline btn-sm" style="border-color: var(--status-good); color: #15803D; background: #F0FDF4;" onclick="sendToGoogleSheets()" id="btn-nav-sheets">
+        <button type="button" class="btn btn-green btn-sm" onclick="sendToGoogleSheets()" id="btn-nav-sheets">
           📊 Enviar a Google Sheets
         </button>
         <button type="button" class="btn btn-outline btn-sm" onclick="openSheetsConfigModal()" title="Configurar conexión con Google Sheets">
@@ -55,13 +55,18 @@
     <div id="editor-view" class="editor-view-container">
 
       <!-- PACKAGE SELECTOR -->
-      <section class="package-selector-card">
+      <section class="package-selector-card" id="package-selector-section">
         <div class="section-header-row">
           <div class="section-title">
             <span>🛡️ Nivel de Servicio Contratado</span>
           </div>
-          <div id="pkg-lock-status" style="font-size: 0.8rem; color: var(--text-secondary);">
-            Selecciona el tipo de servicio para habilitar el formulario (una vez seleccionado quedará bloqueado)
+          <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap;">
+            <div id="pkg-lock-status" style="font-size: 0.8rem; color: var(--text-secondary);">
+              Selecciona el tipo de servicio para habilitar el formulario (una vez seleccionado quedará bloqueado)
+            </div>
+            <button type="button" class="btn btn-outline btn-sm" id="btn-toggle-pkg-details" style="display:none;" onclick="togglePackageDetailsView()">
+              👁️ Ver alcance
+            </button>
           </div>
         </div>
 
@@ -110,42 +115,52 @@
         </div>
       </section>
 
-      <!-- LIVE STATS BAR -->
-      <section class="stats-bar">
-        <div class="stat-card">
-          <div>
-            <div class="stat-label">Avance Revisión</div>
-            <div class="stat-value" id="stat-progress">0%</div>
+      <!-- LIVE STATS & PROGRESS BAR -->
+      <section class="stats-wrapper">
+        <div class="progress-track-row">
+          <span style="font-size:0.78rem; font-weight:700; color:var(--text-secondary);">Progreso total de la inspección</span>
+          <div class="progress-track">
+            <div class="progress-fill" id="progress-bar-fill"></div>
           </div>
-          <span style="font-size:1.4rem;">📊</span>
+          <span style="font-size:0.82rem; font-weight:800; color:var(--brand-black);" id="stat-progress">0%</span>
         </div>
-        <div class="stat-card">
-          <div>
-            <div class="stat-label">Óptimo / Bueno</div>
-            <div class="stat-value" style="color: var(--status-good);" id="stat-good">0</div>
+
+        <div class="stats-bar">
+          <div class="stat-card">
+            <div>
+              <div class="stat-label">Evaluados</div>
+              <div class="stat-value" id="stat-evaluated-count">0/0</div>
+            </div>
+            <span style="font-size:1.3rem;">📋</span>
           </div>
-          <span style="font-size:1.4rem;">✅</span>
-        </div>
-        <div class="stat-card">
-          <div>
-            <div class="stat-label">Mantenimiento (Regular)</div>
-            <div class="stat-value" style="color: var(--status-warn);" id="stat-warn">0</div>
+          <div class="stat-card">
+            <div>
+              <div class="stat-label">Óptimo / Bueno</div>
+              <div class="stat-value" style="color: var(--status-good);" id="stat-good">0</div>
+            </div>
+            <span style="font-size:1.3rem;">✅</span>
           </div>
-          <span style="font-size:1.4rem;">⚠️</span>
-        </div>
-        <div class="stat-card">
-          <div>
-            <div class="stat-label">Urgente (Malo)</div>
-            <div class="stat-value" style="color: var(--status-bad);" id="stat-bad">0</div>
+          <div class="stat-card">
+            <div>
+              <div class="stat-label">Mantenimiento</div>
+              <div class="stat-value" style="color: var(--status-warn);" id="stat-warn">0</div>
+            </div>
+            <span style="font-size:1.3rem;">⚠️</span>
           </div>
-          <span style="font-size:1.4rem;">❌</span>
-        </div>
-        <div class="stat-card">
-          <div>
-            <div class="stat-label">Evidencia Fotográfica</div>
-            <div class="stat-value" id="stat-photos">0</div>
+          <div class="stat-card">
+            <div>
+              <div class="stat-label">Urgente (Malo)</div>
+              <div class="stat-value" style="color: var(--status-bad);" id="stat-bad">0</div>
+            </div>
+            <span style="font-size:1.3rem;">❌</span>
           </div>
-          <span style="font-size:1.4rem;">📸</span>
+          <div class="stat-card">
+            <div>
+              <div class="stat-label">Evidencia Fotos</div>
+              <div class="stat-value" id="stat-photos">0</div>
+            </div>
+            <span style="font-size:1.3rem;">📸</span>
+          </div>
         </div>
       </section>
 
@@ -737,6 +752,9 @@
       </div>
     </div>
   </div>
+
+  <!-- TOAST NOTIFICATIONS -->
+  <div id="toast-container" class="toast-container no-print"></div>
 
   <script src="app.js"></script>
 </body>

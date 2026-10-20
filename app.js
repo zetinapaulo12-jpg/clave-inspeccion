@@ -592,6 +592,24 @@ function importInspectionJSON(event) {
 // SELECCIÓN DE PAQUETE (BLOQUEO UNA VEZ SELECCIONADO) Y PESTAÑAS
 // ============================================================================
 
+let roomFilterMode = 'all'; // 'all' | 'pending' | 'issues'
+const collapsedCategories = {};
+
+function showToast(msg) {
+  const cont = document.getElementById('toast-container');
+  if (!cont) return;
+  const el = document.createElement('div');
+  el.className = 'toast-item';
+  el.innerHTML = `<span>${escapeHtml(msg)}</span>`;
+  cont.appendChild(el);
+  setTimeout(() => {
+    el.style.opacity = '0';
+    el.style.transform = 'translateY(8px)';
+    el.style.transition = 'all 0.2s ease';
+    setTimeout(() => el.remove(), 220);
+  }, 3000);
+}
+
 function selectPackage(pkg) {
   // Si el paquete ya fue bloqueado en esta visita, no permitir cambiarlo
   if (state.packageLocked && state.package) {
@@ -603,10 +621,32 @@ function selectPackage(pkg) {
   syncPackageUI();
   renderActiveRoomPanel();
   renderFindingsSummary();
+  showToast(`🔒 Nivel de servicio fijado en: ${pkg.toUpperCase()}`);
+}
+
+function togglePackageDetailsView() {
+  const section = document.getElementById('package-selector-section');
+  const btn = document.getElementById('btn-toggle-pkg-details');
+  if (!section) return;
+  const isShowing = section.classList.toggle('show-details');
+  if (btn) {
+    btn.textContent = isShowing ? '🔼 Ocultar alcance' : '👁️ Ver alcance';
+  }
 }
 
 function syncPackageUI() {
   const isLocked = Boolean(state.packageLocked && state.package);
+  const section = document.getElementById('package-selector-section');
+  const toggleBtn = document.getElementById('btn-toggle-pkg-details');
+
+  if (section) {
+    section.classList.toggle('compact-locked', isLocked);
+    section.classList.toggle('unselected-pulse', !isLocked);
+    if (!isLocked) section.classList.remove('show-details');
+  }
+  if (toggleBtn) {
+    toggleBtn.style.display = isLocked ? 'inline-flex' : 'none';
+  }
 
   ['esencial', 'integral', 'premium'].forEach(p => {
     const card = document.getElementById(`pkg-card-${p}`);
@@ -619,9 +659,9 @@ function syncPackageUI() {
   const lockStatusEl = document.getElementById('pkg-lock-status');
   if (lockStatusEl) {
     if (isLocked) {
-      lockStatusEl.innerHTML = `<span class="package-locked-pill">🔒 Tipo de formulario fijado: ${state.package.toUpperCase()} (No se puede cambiar)</span>`;
+      lockStatusEl.innerHTML = `<span class="package-locked-pill">🔒 Servicio Fijo: ${state.package.toUpperCase()} (Bloqueado)</span>`;
     } else {
-      lockStatusEl.innerHTML = `<span>👆 Selecciona primero el nivel de servicio (una vez elegido no se podrá cambiar)</span>`;
+      lockStatusEl.innerHTML = `<span style="font-weight:700; color:var(--brand-gold-hover);">👆 Paso inicial: Elige el paquete contratado (una vez seleccionado quedará bloqueado)</span>`;
     }
   }
 
@@ -690,7 +730,7 @@ function switchTab(tabId) {
 }
 
 function goNextFromRooms() {
-  if (state.package === 'esencial') {
+  if (state.package === 'esencial' || !state.package) {
     switchTab('tab-closing');
   } else {
     switchTab('tab-integral');
@@ -717,7 +757,10 @@ function syncMetaInputs() {
   ];
   fields.forEach(f => {
     const el = document.getElementById(`meta-${f}`);
-    if (el) el.value = state.meta[f] || '';
+    if (el) {
+      el.value = state.meta[f] || '';
+      el.classList.toggle('filled-green', Boolean(state.meta[f] && String(state.meta[f]).trim()));
+    }
   });
 
   const headerFolio = document.getElementById('header-folio-display');
@@ -730,6 +773,10 @@ function syncMetaInputs() {
 
 function updateMeta(field, value) {
   state.meta[field] = value;
+  const el = document.getElementById(`meta-${field}`);
+  if (el) {
+    el.classList.toggle('filled-green', Boolean(value && String(value).trim()));
+  }
   if (field === 'folio' || field === 'clientName') {
     const headerFolio = document.getElementById('header-folio-display');
     if (headerFolio) {
@@ -746,6 +793,7 @@ function handleCoverPhotoUpload(event) {
     state.meta.coverPhoto = dataUrl;
     renderCoverPhotoPreview();
     saveState();
+    showToast('📷 Foto de portada agregada');
   });
   event.target.value = '';
 }
@@ -775,33 +823,56 @@ function removeCoverPhoto() {
 // 2. EQUIPOS CENTRALES Y EXTERIOR
 // ============================================================================
 
+function toggleCategoryCollapse(catKey) {
+  collapsedCategories[catKey] = !collapsedCategories[catKey];
+  const block = document.getElementById(`cat-block-${catKey}`);
+  if (block) {
+    block.classList.toggle('collapsed', Boolean(collapsedCategories[catKey]));
+  }
+}
+
 function renderSystemsChecklist() {
   const container = document.getElementById('systems-checklist-container');
   if (!container) return;
 
-  container.innerHTML = SYSTEMS_SCHEMA.map(cat => `
-    <div class="category-block">
-      <div class="category-block-header">
-        <div class="category-block-title">${cat.categoryTitle}</div>
+  container.innerHTML = SYSTEMS_SCHEMA.map(cat => {
+    const total = cat.items.length;
+    const done = cat.items.filter(it => {
+      const r = state.systems[it.id];
+      return r && (r.status || (Array.isArray(r.selectedTags) && r.selectedTags.length > 0));
+    }).length;
+    const isComplete = done === total && total > 0;
+    const catKey = `sys_${cat.categoryId}`;
+    const isCollapsed = Boolean(collapsedCategories[catKey]);
+
+    return `
+      <div class="category-block ${isCollapsed ? 'collapsed' : ''}" id="cat-block-${catKey}">
+        <div class="category-block-header" onclick="toggleCategoryCollapse('${catKey}')">
+          <div class="category-block-title">${cat.categoryTitle}</div>
+          <span class="cat-progress-pill ${isComplete ? 'complete' : ''}">
+            ${isComplete ? '✓ Completado' : `${done}/${total} revisados`}
+          </span>
+        </div>
+        <div class="category-items-body">
+          ${cat.items.map(item => renderChecklistItemHTML('systems', item, state.systems[item.id])).join('')}
+        </div>
       </div>
-      <div>
-        ${cat.items.map(item => renderChecklistItemHTML('systems', item, state.systems[item.id])).join('')}
-      </div>
-    </div>
-  `).join('');
+    `;
+  }).join('');
 }
 
 function markAllSystemsGood() {
   SYSTEMS_SCHEMA.forEach(cat => {
     cat.items.forEach(item => {
       if (!state.systems[item.id] || !state.systems[item.id].status) {
-        state.systems[item.id] = state.systems[item.id] || { status: '', notes: '', photos: [] };
+        state.systems[item.id] = state.systems[item.id] || { status: '', notes: '', selectedTags: [], photos: [] };
         state.systems[item.id].status = 'good';
       }
     });
   });
   saveState();
   renderSystemsChecklist();
+  showToast('✅ Equipos sin observaciones marcados como Bueno');
 }
 
 // ============================================================================
@@ -821,7 +892,9 @@ function renderRoomsSidebar() {
   listEl.innerHTML = state.rooms.map((room, index) => {
     const isActive = room.id === state.activeRoomId;
     const stats = getRoomStats(room);
-    let indicatorHTML = `<span style="font-size:0.72rem; opacity:0.8;">${stats.evaluated}/${stats.total}</span>`;
+    const pct = stats.total > 0 ? Math.round((stats.evaluated / stats.total) * 100) : 0;
+
+    let indicatorHTML = `<span style="font-size:0.72rem; opacity:0.85;">${stats.evaluated}/${stats.total}</span>`;
     if (stats.bad > 0) {
       indicatorHTML += `<span class="status-dot" style="background:var(--status-bad);" title="${stats.bad} urgente(s)"></span>`;
     } else if (stats.warn > 0) {
@@ -832,8 +905,13 @@ function renderRoomsSidebar() {
 
     return `
       <button type="button" class="room-item-btn ${isActive ? 'active' : ''}" onclick="selectRoom('${room.id}')">
-        <span style="overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">${index + 1}. ${escapeHtml(room.name)}</span>
-        <span class="room-status-dots">${indicatorHTML}</span>
+        <div class="room-item-top">
+          <span style="overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">${index + 1}. ${escapeHtml(room.name)}</span>
+          <span class="room-status-dots">${indicatorHTML}</span>
+        </div>
+        <div class="room-mini-progress">
+          <div class="room-mini-progress-fill" style="width:${pct}%;"></div>
+        </div>
       </button>
     `;
   }).join('');
@@ -844,6 +922,11 @@ function selectRoom(roomId) {
   renderRoomsSidebar();
   renderActiveRoomPanel();
   saveState();
+}
+
+function setRoomFilterMode(mode) {
+  roomFilterMode = mode;
+  renderActiveRoomPanel();
 }
 
 function getActiveCategoriesForRoom(room) {
@@ -867,7 +950,8 @@ function getRoomStats(room) {
     cat.items.forEach(item => {
       total++;
       const entry = room.items?.[item.id];
-      if (entry && entry.status) {
+      const hasTags = Array.isArray(entry?.selectedTags) && entry.selectedTags.length > 0;
+      if (entry && (entry.status || hasTags)) {
         evaluated++;
         if (entry.status === 'good') good++;
         if (entry.status === 'warn') warn++;
@@ -890,28 +974,29 @@ function renderActiveRoomPanel() {
   }
 
   const activeCategories = getActiveCategoriesForRoom(room);
+  const stats = getRoomStats(room);
 
   panel.innerHTML = `
     <div class="card">
-      <div class="section-header-row" style="border-bottom:1px solid var(--border-color); padding-bottom:14px; margin-bottom:16px;">
+      <div class="section-header-row" style="border-bottom:1px solid var(--border-color); padding-bottom:14px; margin-bottom:14px;">
         <div style="display:flex; align-items:center; gap:10px; flex-wrap:wrap; flex:1;">
           <input
             type="text"
             class="form-control"
-            style="font-size:1.05rem; font-weight:700; max-width:300px;"
+            style="font-size:1.05rem; font-weight:800; max-width:290px;"
             value="${escapeHtml(room.name)}"
             oninput="renameActiveRoom(this.value)"
             title="Editar nombre del área o habitación"
           />
-          <label style="display:inline-flex; align-items:center; gap:6px; font-size:0.82rem; font-weight:600; color:var(--text-secondary); cursor:pointer; background:#F8FAFC; padding:6px 10px; border-radius:var(--radius-sm); border:1px solid var(--border-color);">
+          <label style="display:inline-flex; align-items:center; gap:6px; font-size:0.8rem; font-weight:700; color:var(--text-secondary); cursor:pointer; background:var(--bg-subtle); padding:7px 11px; border-radius:var(--radius-sm); border:1px solid var(--border-color);">
             <input type="checkbox" ${room.hasPlumbing ? 'checked' : ''} onchange="toggleRoomPlumbing(this.checked)" />
-            💧 Incluye instalaciones de agua/drenaje
+            💧 Con instalaciones de agua/drenaje
           </label>
         </div>
 
         <div style="display:flex; gap:6px; flex-wrap:wrap;">
-          <button type="button" class="btn btn-outline btn-sm" onclick="markRoomAllGood('${room.id}')" title="Marcar los puntos vacíos de esta habitación como Bueno">
-            ✅ Todo Bueno
+          <button type="button" class="btn btn-green btn-sm" onclick="markRoomAllGood('${room.id}')" title="Marcar los puntos vacíos de esta habitación como Bueno">
+            ✅ Marcar Resto como Bueno
           </button>
           <button type="button" class="btn btn-outline btn-sm" onclick="duplicateRoom('${room.id}')" title="Duplicar área (ej. para otra recámara o baño)">
             📋 Duplicar
@@ -924,16 +1009,58 @@ function renderActiveRoomPanel() {
         </div>
       </div>
 
-      ${activeCategories.map(cat => `
-        <div class="category-block">
-          <div class="category-block-header">
-            <div class="category-block-title">${cat.categoryTitle}</div>
-          </div>
-          <div>
-            ${cat.items.map(item => renderChecklistItemHTML(`room:${room.id}`, item, room.items[item.id])).join('')}
-          </div>
+      <!-- BARRA DE FILTRO RÁPIDO EN LA HABITACIÓN -->
+      <div class="filter-bar">
+        <div class="filter-pills">
+          <button type="button" class="filter-pill ${roomFilterMode === 'all' ? 'active' : ''}" onclick="setRoomFilterMode('all')">
+            Todos (${stats.total})
+          </button>
+          <button type="button" class="filter-pill ${roomFilterMode === 'pending' ? 'active' : ''}" onclick="setRoomFilterMode('pending')">
+            Pendientes (${stats.total - stats.evaluated})
+          </button>
+          <button type="button" class="filter-pill ${roomFilterMode === 'issues' ? 'active' : ''}" onclick="setRoomFilterMode('issues')">
+            Con Hallazgos ⚠️/❌ (${stats.warn + stats.bad})
+          </button>
         </div>
-      `).join('')}
+        <span style="font-size:0.75rem; color:var(--text-muted); font-weight:600;">
+          Toca cualquier encabezado de categoría para contraer/expandir
+        </span>
+      </div>
+
+      ${activeCategories.map(cat => {
+        const filteredItems = cat.items.filter(item => {
+          const entry = room.items[item.id];
+          const isEval = Boolean(entry && (entry.status || (Array.isArray(entry.selectedTags) && entry.selectedTags.length > 0)));
+          if (roomFilterMode === 'pending') return !isEval;
+          if (roomFilterMode === 'issues') return entry && (entry.status === 'warn' || entry.status === 'bad');
+          return true;
+        });
+
+        if (filteredItems.length === 0) return '';
+
+        const catTotal = cat.items.length;
+        const catDone = cat.items.filter(it => {
+          const r = room.items[it.id];
+          return r && (r.status || (Array.isArray(r.selectedTags) && r.selectedTags.length > 0));
+        }).length;
+        const isCatComplete = catDone === catTotal && catTotal > 0;
+        const catKey = `room_${room.id}_${cat.categoryId}`;
+        const isCollapsed = Boolean(collapsedCategories[catKey]);
+
+        return `
+          <div class="category-block ${isCollapsed ? 'collapsed' : ''}" id="cat-block-${catKey}">
+            <div class="category-block-header" onclick="toggleCategoryCollapse('${catKey}')">
+              <div class="category-block-title">${cat.categoryTitle}</div>
+              <span class="cat-progress-pill ${isCatComplete ? 'complete' : ''}">
+                ${isCatComplete ? '✓ Completado' : `${catDone}/${catTotal} revisados`}
+              </span>
+            </div>
+            <div class="category-items-body">
+              ${filteredItems.map(item => renderChecklistItemHTML(`room:${room.id}`, item, room.items[item.id])).join('')}
+            </div>
+          </div>
+        `;
+      }).join('')}
 
       <div class="form-group" style="margin-top:12px;">
         <label>Notas u Observaciones Generales de "${escapeHtml(room.name)}"</label>
@@ -978,7 +1105,7 @@ function markRoomAllGood(roomId) {
   cats.forEach(cat => {
     cat.items.forEach(item => {
       if (!room.items[item.id] || !room.items[item.id].status) {
-        room.items[item.id] = room.items[item.id] || { status: '', notes: '', photos: [] };
+        room.items[item.id] = room.items[item.id] || { status: '', notes: '', selectedTags: [], photos: [] };
         room.items[item.id].status = 'good';
       }
     });
@@ -986,6 +1113,7 @@ function markRoomAllGood(roomId) {
   saveState();
   renderRoomsSidebar();
   renderActiveRoomPanel();
+  showToast(`✅ Puntos restantes de "${room.name}" marcados como Bueno`);
 }
 
 function duplicateRoom(roomId) {
@@ -997,6 +1125,7 @@ function duplicateRoom(roomId) {
   saveState();
   renderRoomsSidebar();
   renderActiveRoomPanel();
+  showToast(`📋 Área "${newRoom.name}" creada`);
 }
 
 function deleteRoom(roomId) {
@@ -1056,6 +1185,7 @@ function confirmAddRoom() {
   renderRoomsSidebar();
   renderActiveRoomPanel();
   closeAddRoomModal();
+  showToast(`🏠 Se agregó "${name}"`);
 }
 
 // ============================================================================
@@ -1084,7 +1214,7 @@ function renderIntegralModules() {
         <div class="category-block-header">
           <div class="category-block-title">🚁 Puntos de Inspección Aérea con Dron</div>
         </div>
-        <div>
+        <div class="category-items-body">
           ${DRONE_SCHEMA.map(item => renderChecklistItemHTML('drone', item, state.drone.items[item.id])).join('')}
         </div>
       </div>
@@ -1098,7 +1228,7 @@ function renderIntegralModules() {
         <div class="category-block-header">
           <div class="category-block-title">💧🔦 Puntos de Humedad, Filtraciones y Áreas de Difícil Acceso</div>
         </div>
-        <div>
+        <div class="category-items-body">
           ${MOISTURE_SCHEMA.map(item => renderChecklistItemHTML('moisture', item, state.moisture.items[item.id])).join('')}
         </div>
       </div>
@@ -1150,6 +1280,11 @@ function renderChecklistItemHTML(scope, itemSchema, entryData) {
   const photos = entry.photos || [];
   const isAnswered = Boolean(st || selectedTags.length > 0);
 
+  let rowStatusClass = '';
+  if (st === 'bad') rowStatusClass = 'status-row-bad';
+  else if (st === 'warn') rowStatusClass = 'status-row-warn';
+  else if (isAnswered) rowStatusClass = 'answered-row';
+
   const tagsHTML = (itemSchema.tags || []).map(tag => {
     const isSelected = selectedTags.includes(tag) || (notes && notes.includes(tag));
     return `
@@ -1171,7 +1306,7 @@ function renderChecklistItemHTML(scope, itemSchema, entryData) {
   `).join('');
 
   return `
-    <div class="checklist-item ${isAnswered ? 'answered-row' : ''}" id="item-${scope}-${itemSchema.id}">
+    <div class="checklist-item ${rowStatusClass}" id="item-${scope}-${itemSchema.id}">
       <div class="checklist-item-top">
         <div class="item-info">
           <div class="item-title">${escapeHtml(itemSchema.title)}</div>
@@ -1352,6 +1487,7 @@ function handleItemPhotoUpload(event, scope, itemId) {
       if (processed === files.length) {
         saveState();
         refreshScopeUI(scope);
+        showToast(`📷 ${files.length} fotografía(s) adjuntada(s)`);
       }
     });
   });
@@ -1404,7 +1540,7 @@ function collectAllActiveItems() {
         area: 'Equipos Centrales / Exterior',
         category: cat.categoryTitle,
         title: item.title,
-        entry: state.systems[item.id] || { status: '', notes: '', photos: [] }
+        entry: state.systems[item.id] || { status: '', notes: '', selectedTags: [], photos: [] }
       });
     });
   });
@@ -1418,7 +1554,7 @@ function collectAllActiveItems() {
           area: room.name,
           category: cat.categoryTitle,
           title: item.title,
-          entry: room.items[item.id] || { status: '', notes: '', photos: [] }
+          entry: room.items[item.id] || { status: '', notes: '', selectedTags: [], photos: [] }
         });
       });
     });
@@ -1431,7 +1567,7 @@ function collectAllActiveItems() {
         area: 'Registro Aéreo con Dron',
         category: '🚁 Inspección con Dron',
         title: item.title,
-        entry: state.drone.items[item.id] || { status: '', notes: '', photos: [] }
+        entry: state.drone.items[item.id] || { status: '', notes: '', selectedTags: [], photos: [] }
       });
     });
     MOISTURE_SCHEMA.forEach(item => {
@@ -1439,7 +1575,7 @@ function collectAllActiveItems() {
         area: 'Humedad y Difícil Acceso',
         category: '💧🔦 Humedad / Áreas Difíciles',
         title: item.title,
-        entry: state.moisture.items[item.id] || { status: '', notes: '', photos: [] }
+        entry: state.moisture.items[item.id] || { status: '', notes: '', selectedTags: [], photos: [] }
       });
     });
   }
@@ -1456,7 +1592,8 @@ function updateStatsBar() {
   let photosCount = state.meta.coverPhoto ? 1 : 0;
 
   all.forEach(({ entry }) => {
-    if (entry.status) evaluated++;
+    const hasTags = Array.isArray(entry.selectedTags) && entry.selectedTags.length > 0;
+    if (entry.status || hasTags) evaluated++;
     if (entry.status === 'good') good++;
     if (entry.status === 'warn') warn++;
     if (entry.status === 'bad') bad++;
@@ -1471,10 +1608,16 @@ function updateStatsBar() {
   };
 
   setTxt('stat-progress', `${pct}%`);
+  setTxt('stat-evaluated-count', `${evaluated}/${all.length}`);
   setTxt('stat-good', good);
   setTxt('stat-warn', warn);
   setTxt('stat-bad', bad);
   setTxt('stat-photos', photosCount);
+
+  const fillEl = document.getElementById('progress-bar-fill');
+  if (fillEl) {
+    fillEl.style.width = `${pct}%`;
+  }
 }
 
 function renderFindingsSummary() {
