@@ -1,0 +1,675 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>CLAVE CONSTRUCCIÓN | Sistema Digital de Inspección Técnica</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+
+  <!-- TOP NAVBAR -->
+  <header class="top-navbar no-print">
+    <div class="navbar-inner">
+      <div class="brand-header">
+        <img src="assets/logo.png" alt="CLAVE CONSTRUCCIÓN" class="brand-logo" />
+        <div class="brand-title-group">
+          <h1>Inspección Técnica de Inmuebles</h1>
+          <p id="header-folio-display">Folio: CLV-2026-001 • Registro Digital de Visita</p>
+        </div>
+      </div>
+
+      <div class="navbar-actions">
+        <button type="button" class="btn btn-outline btn-sm" onclick="openHistoryModal()">
+          📂 Mis Inspecciones (<span id="saved-count">0</span>)
+        </button>
+        <button type="button" class="btn btn-outline btn-sm" onclick="exportInspectionJSON()" title="Descargar respaldo digital (.json)">
+          💾 Respaldar
+        </button>
+        <label class="btn btn-outline btn-sm" style="margin:0;" title="Cargar archivo de respaldo (.json)">
+          📤 Cargar
+          <input type="file" accept=".json" style="display:none;" onchange="importInspectionJSON(event)" />
+        </label>
+        <button type="button" class="btn btn-outline btn-sm" onclick="resetNewInspection()">
+          ➕ Nueva Visita
+        </button>
+        <button type="button" class="btn btn-gold" onclick="toggleReportPreview(true)">
+          📄 Ver Informe / PDF
+        </button>
+      </div>
+    </div>
+  </header>
+
+  <main class="main-container">
+
+    <!-- EDITOR VIEW -->
+    <div id="editor-view" class="editor-view-container">
+
+      <!-- PACKAGE SELECTOR -->
+      <section class="package-selector-card">
+        <div class="section-header-row">
+          <div class="section-title">
+            <span>🛡️ Nivel de Servicio Contratado</span>
+          </div>
+          <span style="font-size: 0.8rem; color: var(--text-secondary);">
+            Selecciona el paquete para habilitar automáticamente los módulos correspondientes
+          </span>
+        </div>
+
+        <div class="package-grid">
+          <!-- ESENCIAL -->
+          <div class="package-option" id="pkg-card-esencial" onclick="selectPackage('esencial')">
+            <div class="package-name">
+              <span>Esencial</span>
+              <span class="package-check">✓</span>
+            </div>
+            <ul class="package-features">
+              <li>Revisión estructural visible (muros, losa, columnas)</li>
+              <li>Instalación eléctrica e hidráulica aparente</li>
+              <li>Acabados arquitectónicos (pisos, paredes y techos)</li>
+              <li>Equipamiento fijo (puertas, ventanas, cerrajería)</li>
+              <li>Informe escrito con registro fotográfico</li>
+            </ul>
+          </div>
+
+          <!-- INTEGRAL -->
+          <div class="package-option" id="pkg-card-integral" onclick="selectPackage('integral')">
+            <span class="package-badge-popular">Más popular</span>
+            <div class="package-name">
+              <span>Integral</span>
+              <span class="package-check">✓</span>
+            </div>
+            <ul class="package-features">
+              <li><strong>Todo lo incluido en el paquete Esencial</strong></li>
+              <li>Registro aéreo con dron (azoteas, techumbres, fachadas)</li>
+              <li>Revisión de humedad, filtraciones y áreas de difícil acceso</li>
+            </ul>
+          </div>
+
+          <!-- PREMIUM -->
+          <div class="package-option" id="pkg-card-premium" onclick="selectPackage('premium')">
+            <div class="package-name">
+              <span>Premium</span>
+              <span class="package-check">✓</span>
+            </div>
+            <ul class="package-features">
+              <li><strong>Todo lo incluido en el paquete Integral</strong></li>
+              <li>Tour virtual 360° interactivo del inmueble</li>
+              <li><strong>Respaldo Legal:</strong> Dictamen técnico firmado por ingeniero o arquitecto colegiado</li>
+            </ul>
+          </div>
+        </div>
+      </section>
+
+      <!-- LIVE STATS BAR -->
+      <section class="stats-bar">
+        <div class="stat-card">
+          <div>
+            <div class="stat-label">Avance Revisión</div>
+            <div class="stat-value" id="stat-progress">0%</div>
+          </div>
+          <span style="font-size:1.4rem;">📊</span>
+        </div>
+        <div class="stat-card">
+          <div>
+            <div class="stat-label">Óptimo / Bueno</div>
+            <div class="stat-value" style="color: var(--status-good);" id="stat-good">0</div>
+          </div>
+          <span style="font-size:1.4rem;">✅</span>
+        </div>
+        <div class="stat-card">
+          <div>
+            <div class="stat-label">Mantenimiento (Regular)</div>
+            <div class="stat-value" style="color: var(--status-warn);" id="stat-warn">0</div>
+          </div>
+          <span style="font-size:1.4rem;">⚠️</span>
+        </div>
+        <div class="stat-card">
+          <div>
+            <div class="stat-label">Urgente (Malo)</div>
+            <div class="stat-value" style="color: var(--status-bad);" id="stat-bad">0</div>
+          </div>
+          <span style="font-size:1.4rem;">❌</span>
+        </div>
+        <div class="stat-card">
+          <div>
+            <div class="stat-label">Evidencia Fotográfica</div>
+            <div class="stat-value" id="stat-photos">0</div>
+          </div>
+          <span style="font-size:1.4rem;">📸</span>
+        </div>
+      </section>
+
+      <!-- NAVIGATION TABS -->
+      <nav class="nav-tabs" id="main-tabs">
+        <button type="button" class="nav-tab active" data-tab="tab-general" onclick="switchTab('tab-general')">
+          📋 1. Datos Generales
+        </button>
+        <button type="button" class="nav-tab" data-tab="tab-systems" onclick="switchTab('tab-systems')">
+          ⚡ 2. Equipos Centrales y Exterior
+        </button>
+        <button type="button" class="nav-tab" data-tab="tab-rooms" onclick="switchTab('tab-rooms')">
+          🏠 3. Inspección por Habitación <span class="tab-badge" id="rooms-count-badge">5</span>
+        </button>
+        <button type="button" class="nav-tab" id="nav-tab-integral" data-tab="tab-integral" onclick="switchTab('tab-integral')">
+          🚁 4. Dron, Humedad y Difícil Acceso <span class="tab-badge" id="badge-integral-pkg">Integral+</span>
+        </button>
+        <button type="button" class="nav-tab" id="nav-tab-premium" data-tab="tab-premium" onclick="switchTab('tab-premium')">
+          ⚖️ 5. Tour 360° y Dictamen Legal <span class="tab-badge" id="badge-premium-pkg">Premium</span>
+        </button>
+        <button type="button" class="nav-tab" data-tab="tab-closing" onclick="switchTab('tab-closing')">
+          ✍️ 6. Resumen y Firmas
+        </button>
+      </nav>
+
+      <!-- TAB 1: DATOS GENERALES -->
+      <section id="tab-general" class="tab-panel">
+        <div class="card">
+          <h2 class="card-title">📋 Información General de la Visita y del Inmueble</h2>
+          <p class="card-subtitle">Captura los datos de identificación del cliente, ubicación de la propiedad y condiciones en las que se realiza la inspección.</p>
+
+          <div class="form-grid">
+            <div class="form-group">
+              <label>Folio de Inspección</label>
+              <input type="text" class="form-control" id="meta-folio" oninput="updateMeta('folio', this.value)" placeholder="Ej. CLV-2026-001" />
+            </div>
+            <div class="form-group">
+              <label>Fecha de Inspección</label>
+              <input type="date" class="form-control" id="meta-date" oninput="updateMeta('date', this.value)" />
+            </div>
+            <div class="form-group">
+              <label>Hora de Inicio</label>
+              <input type="time" class="form-control" id="meta-time" oninput="updateMeta('time', this.value)" />
+            </div>
+            <div class="form-group">
+              <label>Motivo de la Inspección</label>
+              <select class="form-control" id="meta-purpose" onchange="updateMeta('purpose', this.value)">
+                <option value="Recepción de inmueble nuevo / Entrega de constructora">Recepción de inmueble nuevo / Constructora</option>
+                <option value="Pre-compra de inmueble usado">Pre-compra de inmueble usado</option>
+                <option value="Diagnóstico de mantenimiento / patologías">Diagnóstico de mantenimiento / patologías</option>
+                <option value="Entrega / Recepción de arrendamiento">Entrega / Recepción de arrendamiento</option>
+                <option value="Dictamen pericial / Respaldo legal">Dictamen pericial / Respaldo legal</option>
+              </select>
+            </div>
+
+            <div class="form-group">
+              <label>Nombre del Cliente / Solicitante</label>
+              <input type="text" class="form-control" id="meta-clientName" oninput="updateMeta('clientName', this.value)" placeholder="Nombre completo o Empresa" />
+            </div>
+            <div class="form-group">
+              <label>Teléfono del Cliente</label>
+              <input type="tel" class="form-control" id="meta-clientPhone" oninput="updateMeta('clientPhone', this.value)" placeholder="Ej. 55 1234 5678" />
+            </div>
+            <div class="form-group">
+              <label>Correo Electrónico</label>
+              <input type="email" class="form-control" id="meta-clientEmail" oninput="updateMeta('clientEmail', this.value)" placeholder="cliente@correo.com" />
+            </div>
+            <div class="form-group">
+              <label>Persona que atiende en la visita</label>
+              <input type="text" class="form-control" id="meta-accompaniedBy" oninput="updateMeta('accompaniedBy', this.value)" placeholder="Ej. Propietario, Asesor inmobiliario, Residente" />
+            </div>
+
+            <div class="form-group full-width">
+              <label>Dirección Completa del Inmueble</label>
+              <input type="text" class="form-control" id="meta-address" oninput="updateMeta('address', this.value)" placeholder="Calle, Número, Interior, Colonia, Municipio/Alcaldía, Ciudad, C.P." />
+            </div>
+
+            <div class="form-group">
+              <label>Tipo de Inmueble</label>
+              <select class="form-control" id="meta-propertyType" onchange="updateMeta('propertyType', this.value)">
+                <option value="Casa Habitación">Casa Habitación</option>
+                <option value="Departamento">Departamento</option>
+                <option value="Oficina Corporativa">Oficina Corporativa</option>
+                <option value="Local Comercial">Local Comercial</option>
+                <option value="Bodega / Nave Industrial">Bodega / Nave Industrial</option>
+              </select>
+            </div>
+            <div class="form-group">
+              <label>Superficie Aprox. Construcción (m²)</label>
+              <input type="number" class="form-control" id="meta-areaM2" oninput="updateMeta('areaM2', this.value)" placeholder="Ej. 180" />
+            </div>
+            <div class="form-group">
+              <label>Niveles / Pisos</label>
+              <input type="text" class="form-control" id="meta-levels" oninput="updateMeta('levels', this.value)" placeholder="Ej. 2 niveles + Azotea" />
+            </div>
+            <div class="form-group">
+              <label>Antigüedad Aproximada</label>
+              <input type="text" class="form-control" id="meta-age" oninput="updateMeta('age', this.value)" placeholder="Ej. Nuevo (0 años) o 12 años" />
+            </div>
+
+            <div class="form-group">
+              <label>Estado de Ocupación</label>
+              <select class="form-control" id="meta-occupancy" onchange="updateMeta('occupancy', this.value)">
+                <option value="Vacío / Deshabitado">Vacío / Deshabitado</option>
+                <option value="Habitado / Amueblado">Habitado / Amueblado</option>
+                <option value="En acabados finales de obra">En acabados finales de obra</option>
+              </select>
+            </div>
+            <div class="form-group">
+              <label>Condiciones Climáticas en la Visita</label>
+              <select class="form-control" id="meta-weather" onchange="updateMeta('weather', this.value)">
+                <option value="Soleado / Seco">☀️ Soleado / Seco</option>
+                <option value="Nublado">⛅ Nublado</option>
+                <option value="Lluvioso durante la inspección">🌧️ Lluvioso durante la inspección</option>
+                <option value="Posterior a lluvia reciente (24-48h)">💧 Posterior a lluvia reciente (24-48h)</option>
+              </select>
+            </div>
+            <div class="form-group">
+              <label>Inspector Responsable (CLAVE CONSTRUCCIÓN)</label>
+              <input type="text" class="form-control" id="meta-inspectorName" oninput="updateMeta('inspectorName', this.value)" placeholder="Nombre del inspector" />
+            </div>
+            <div class="form-group">
+              <label>Foto de Fachada / Portada del Informe</label>
+              <label class="photo-upload-label">
+                📷 Subir Foto de Portada
+                <input type="file" accept="image/*" style="display:none;" onchange="handleCoverPhotoUpload(event)" />
+              </label>
+              <div id="cover-photo-preview" class="photo-thumbs"></div>
+            </div>
+          </div>
+        </div>
+
+        <div style="display:flex; justify-content:flex-end;">
+          <button type="button" class="btn btn-primary" onclick="switchTab('tab-systems')">
+            Siguiente: Equipos Centrales y Exterior →
+          </button>
+        </div>
+      </section>
+
+      <!-- TAB 2: EQUIPOS CENTRALES Y EXTERIOR -->
+      <section id="tab-systems" class="tab-panel" style="display:none;">
+        <div class="card">
+          <div class="section-header-row">
+            <div>
+              <h2 class="card-title">⚡💧 Evaluación de Equipos Centrales y Estructura Exterior</h2>
+              <p class="card-subtitle" style="margin-bottom:0;">Revisión general del inmueble antes de pasar habitación por habitación: centro de carga, suministro hidráulico central y fachada.</p>
+            </div>
+            <button type="button" class="btn btn-outline btn-sm" onclick="markAllSystemsGood()">
+              ✅ Marcar sin hallazgos como "Bueno"
+            </button>
+          </div>
+
+          <div id="systems-checklist-container" style="margin-top:16px;"></div>
+        </div>
+
+        <div style="display:flex; justify-content:space-between;">
+          <button type="button" class="btn btn-outline" onclick="switchTab('tab-general')">
+            ← Anterior: Datos Generales
+          </button>
+          <button type="button" class="btn btn-primary" onclick="switchTab('tab-rooms')">
+            Siguiente: Inspección por Habitación →
+          </button>
+        </div>
+      </section>
+
+      <!-- TAB 3: INSPECCIÓN POR ÁREA / HABITACIÓN (OPCIÓN B) -->
+      <section id="tab-rooms" class="tab-panel" style="display:none;">
+        <div class="rooms-layout">
+          <!-- SIDEBAR DE HABITACIONES -->
+          <aside class="rooms-sidebar">
+            <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:8px;">
+              <h3 style="font-size:0.95rem; font-weight:700;">🏠 Áreas / Habitaciones</h3>
+              <button type="button" class="btn btn-gold btn-sm" onclick="openAddRoomModal()">
+                + Agregar
+              </button>
+            </div>
+            <p style="font-size:0.75rem; color:var(--text-muted);">
+              Selecciona el área que estás recorriendo para evaluar su estructura, instalaciones, acabados y equipamiento.
+            </p>
+
+            <div class="room-list" id="room-sidebar-list"></div>
+
+            <button type="button" class="btn btn-outline btn-sm" style="width:100%;" onclick="openAddRoomModal()">
+              ➕ Añadir otra habitación o área
+            </button>
+          </aside>
+
+          <!-- DETALLE DE LA HABITACIÓN ACTIVA -->
+          <div id="active-room-panel"></div>
+        </div>
+
+        <div style="display:flex; justify-content:space-between; margin-top:20px;">
+          <button type="button" class="btn btn-outline" onclick="switchTab('tab-systems')">
+            ← Anterior: Equipos Centrales
+          </button>
+          <button type="button" class="btn btn-primary" onclick="goNextFromRooms()">
+            Siguiente Paso →
+          </button>
+        </div>
+      </section>
+
+      <!-- TAB 4: INTEGRAL (DRON + HUMEDAD Y ÁREAS DE DIFÍCIL ACCESO) -->
+      <section id="tab-integral" class="tab-panel" style="display:none;">
+        <div id="integral-locked-banner" class="card" style="display:none; border-color: var(--brand-gold); background: var(--brand-gold-light);">
+          <div style="display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:12px;">
+            <div>
+              <h3 style="font-size:1rem; font-weight:700;">🔒 Módulo exclusivo de los paquetes INTEGRAL y PREMIUM</h3>
+              <p style="font-size:0.84rem; color:var(--text-secondary);">Actualmente tienes seleccionado el paquete <strong>Esencial</strong>. Cambia a Integral o Premium si deseas incluir Registro con Dron y Áreas de Difícil Acceso en este reporte.</p>
+            </div>
+            <button type="button" class="btn btn-gold" onclick="selectPackage('integral')">
+              Cambiar a Paquete Integral
+            </button>
+          </div>
+        </div>
+
+        <div id="integral-content-wrapper">
+          <!-- REGISTRO AÉREO CON DRON -->
+          <div class="card">
+            <h2 class="card-title">🚁 Módulo 1: Registro Aéreo con Dron</h2>
+            <p class="card-subtitle">Inspección visual aérea de azoteas, cubiertas, impermeabilización, domos, equipos superiores y fachadas altas.</p>
+
+            <div class="form-grid" style="margin-bottom:18px;">
+              <div class="form-group">
+                <label>Operador / Equipo de Dron Utilizado</label>
+                <input type="text" class="form-control" id="drone-equipment" oninput="updateModuleField('drone', 'equipment', this.value)" placeholder="Ej. DJI Mini 4 Pro / Mavic 3" />
+              </div>
+              <div class="form-group">
+                <label>Condiciones de Viento y Visibilidad</label>
+                <input type="text" class="form-control" id="drone-conditions" oninput="updateModuleField('drone', 'conditions', this.value)" placeholder="Ej. Viento ligero, visibilidad óptima" />
+              </div>
+              <div class="form-group full-width">
+                <label>Enlace a Carpeta de Vuelo / Video Aéreo (Drive, Dropbox, YouTube, etc.)</label>
+                <input type="url" class="form-control" id="drone-videoUrl" oninput="updateModuleField('drone', 'videoUrl', this.value)" placeholder="https://..." />
+              </div>
+            </div>
+
+            <div id="drone-checklist-container"></div>
+          </div>
+
+          <!-- HUMEDAD, FILTRACIONES Y ÁREAS DE DIFÍCIL ACCESO -->
+          <div class="card">
+            <h2 class="card-title">💧🔦 Módulo 2: Humedad, Filtraciones y Áreas de Difícil Acceso</h2>
+            <p class="card-subtitle">Revisión especializada de humedad (capilaridad, filtración, condensación), entretechos/plafones, registros sanitarios, sótanos y ductos.</p>
+
+            <div class="form-grid" style="margin-bottom:18px;">
+              <div class="form-group">
+                <label>Instrumentos de Diagnóstico Utilizados</label>
+                <input type="text" class="form-control" id="moisture-tools" oninput="updateModuleField('moisture', 'tools', this.value)" placeholder="Ej. Higrómetro digital de contacto, Cámara termográfica, Linterna de inspección" />
+              </div>
+              <div class="form-group">
+                <label>Lectura Máxima de Humedad Registrada (%)</label>
+                <input type="text" class="form-control" id="moisture-maxReading" oninput="updateModuleField('moisture', 'maxReading', this.value)" placeholder="Ej. 18% en muro colindante norte (Normal < 12%)" />
+              </div>
+            </div>
+
+            <div id="moisture-checklist-container"></div>
+          </div>
+        </div>
+
+        <div style="display:flex; justify-content:space-between;">
+          <button type="button" class="btn btn-outline" onclick="switchTab('tab-rooms')">
+            ← Anterior: Habitaciones
+          </button>
+          <button type="button" class="btn btn-primary" onclick="goNextFromIntegral()">
+            Siguiente Paso →
+          </button>
+        </div>
+      </section>
+
+      <!-- TAB 5: PREMIUM (TOUR VIRTUAL 360 + DICTAMEN LEGAL COLEGIADO) -->
+      <section id="tab-premium" class="tab-panel" style="display:none;">
+        <div id="premium-locked-banner" class="card" style="display:none; border-color: var(--brand-gold); background: var(--brand-gold-light);">
+          <div style="display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:12px;">
+            <div>
+              <h3 style="font-size:1rem; font-weight:700;">🔒 Módulo exclusivo del paquete PREMIUM</h3>
+              <p style="font-size:0.84rem; color:var(--text-secondary);">Incluye el Tour Virtual 360° y el Dictamen Técnico con Respaldo Legal firmado por Ingeniero o Arquitecto colegiado.</p>
+            </div>
+            <button type="button" class="btn btn-gold" onclick="selectPackage('premium')">
+              Cambiar a Paquete Premium
+            </button>
+          </div>
+        </div>
+
+        <div id="premium-content-wrapper">
+          <!-- TOUR VIRTUAL 360 -->
+          <div class="card">
+            <h2 class="card-title">🥽 Tour Virtual 360°</h2>
+            <p class="card-subtitle">Registro espacial en 360 grados para consulta digital permanente del estado físico del inmueble durante la visita.</p>
+
+            <div class="form-grid">
+              <div class="form-group full-width">
+                <label>Enlace del Recorrido Virtual 360° (Matterport / Kuula / Ricoh360 / CloudPano)</label>
+                <input type="url" class="form-control" id="tour-url" oninput="updateModuleField('premium', 'tourUrl', this.value)" placeholder="https://my.matterport.com/show/?m=..." />
+              </div>
+              <div class="form-group">
+                <label>Cámara 360° Utilizada</label>
+                <input type="text" class="form-control" id="tour-camera" oninput="updateModuleField('premium', 'tourCamera', this.value)" placeholder="Ej. Insta360 X4 / Ricoh Theta Z1" />
+              </div>
+              <div class="form-group">
+                <label>Total de Puntos / Escenas Capturadas</label>
+                <input type="number" class="form-control" id="tour-scenesCount" oninput="updateModuleField('premium', 'tourScenesCount', this.value)" placeholder="Ej. 14" />
+              </div>
+              <div class="form-group full-width">
+                <label>Notas del Levantamiento 360° (Áreas cubiertas o restricciones de acceso)</label>
+                <textarea class="form-control" id="tour-notes" oninput="updateModuleField('premium', 'tourNotes', this.value)" placeholder="Ej. Se realizó captura 360° de la totalidad de áreas interiores, patio y azotea."></textarea>
+              </div>
+            </div>
+          </div>
+
+          <!-- RESPALDO LEGAL: DICTAMEN TÉCNICO -->
+          <div class="card" style="border-left: 5px solid var(--brand-gold);">
+            <h2 class="card-title">⚖️ Respaldo Legal: Dictamen Técnico Firmado por Ingeniero o Arquitecto Colegiado</h2>
+            <p class="card-subtitle">Sección de acreditación profesional y conclusión técnica pericial con validez formal.</p>
+
+            <div class="form-grid">
+              <div class="form-group">
+                <label>Nombre Completo del Profesionista Colegiado</label>
+                <input type="text" class="form-control" id="legal-profName" oninput="updateModuleField('premium', 'profName', this.value)" placeholder="Ej. Ing. / Arq. Nombre Apellido" />
+              </div>
+              <div class="form-group">
+                <label>Título Profesional</label>
+                <select class="form-control" id="legal-profTitle" onchange="updateModuleField('premium', 'profTitle', this.value)">
+                  <option value="Ingeniero Civil">Ingeniero Civil</option>
+                  <option value="Arquitecto">Arquitecto</option>
+                  <option value="Ingeniero Arquitecto">Ingeniero Arquitecto</option>
+                  <option value="Director Responsable de Obra (DRO) / Perito">Director Responsable de Obra (DRO) / Perito</option>
+                </select>
+              </div>
+              <div class="form-group">
+                <label>Número de Cédula Profesional</label>
+                <input type="text" class="form-control" id="legal-cedula" oninput="updateModuleField('premium', 'cedula', this.value)" placeholder="Ej. 8492017" />
+              </div>
+              <div class="form-group">
+                <label>Colegio de Profesionistas y N.º de Registro</label>
+                <input type="text" class="form-control" id="legal-colegio" oninput="updateModuleField('premium', 'colegio', this.value)" placeholder="Ej. Colegio de Ingenieros Civiles / Reg. 1420" />
+              </div>
+
+              <div class="form-group full-width">
+                <label>Dictamen General de Habitabilidad y Seguridad Técnica</label>
+                <select class="form-control" id="legal-verdict" onchange="updateModuleField('premium', 'verdict', this.value)">
+                  <option value="ÓPTIMO / HABITABLE SIN RIESGOS APARENTES">🟢 ÓPTIMO / HABITABLE SIN RIESGOS APARENTES</option>
+                  <option value="HABITABLE CON OBSERVACIONES (REQUIERE MANTENIMIENTO PREVENTIVO / CORRECTIVO MENOR)">🟡 HABITABLE CON OBSERVACIONES (Requiere mantenimiento preventivo / correctivo menor)</option>
+                  <option value="CONDICIONADO / RIESGO DETECTADO (REQUIERE INTERVENCIÓN TÉCNICA ANTES DE HABITAR)">🔴 CONDICIONADO / RIESGO DETECTADO (Requiere intervención técnica antes de habitar)</option>
+                </select>
+              </div>
+
+              <div class="form-group full-width">
+                <label>Conclusión Técnica Pericial (Fundamento del Dictamen)</label>
+                <textarea class="form-control" id="legal-conclusion" style="min-height:100px;" oninput="updateModuleField('premium', 'conclusion', this.value)" placeholder="Redacta el dictamen técnico sobre la estabilidad estructural visible, el estado de las instalaciones y la habitabilidad del inmueble..."></textarea>
+              </div>
+
+              <div class="form-group full-width">
+                <label>Declaratoria de Alcance y Validez Legal</label>
+                <textarea class="form-control" id="legal-declaration" oninput="updateModuleField('premium', 'declaration', this.value)"></textarea>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div style="display:flex; justify-content:space-between;">
+          <button type="button" class="btn btn-outline" onclick="switchTab('tab-integral')">
+            ← Anterior: Dron y Humedad
+          </button>
+          <button type="button" class="btn btn-primary" onclick="switchTab('tab-closing')">
+            Siguiente: Resumen y Firmas →
+          </button>
+        </div>
+      </section>
+
+      <!-- TAB 6: RESUMEN, HALLAZGOS Y FIRMAS -->
+      <section id="tab-closing" class="tab-panel" style="display:none;">
+        <div class="card">
+          <div class="section-header-row">
+            <div>
+              <h2 class="card-title">📌 Resumen Automático de Hallazgos y Observaciones</h2>
+              <p class="card-subtitle" style="margin-bottom:0;">Todos los puntos calificados como <strong>❌ Malo (Urgente)</strong> o <strong>⚠️ Regular (Mantenimiento)</strong> se concentran aquí automáticamente.</p>
+            </div>
+            <button type="button" class="btn btn-gold" onclick="toggleReportPreview(true)">
+              📄 Generar Vista Oficial del Informe / PDF
+            </button>
+          </div>
+
+          <div id="findings-summary-box" style="margin-top:16px;"></div>
+
+          <div class="form-grid" style="margin-top:18px;">
+            <div class="form-group full-width">
+              <label>Comentarios Generales / Recomendaciones Finales de CLAVE CONSTRUCCIÓN</label>
+              <textarea class="form-control" id="meta-generalNotes" style="min-height:90px;" oninput="updateMeta('generalNotes', this.value)" placeholder="Escribe las recomendaciones generales de mantenimiento, prioridades de reparación o notas adicionales de la visita..."></textarea>
+            </div>
+          </div>
+        </div>
+
+        <!-- FIRMAS DIGITALES -->
+        <div class="card">
+          <h2 class="card-title">✍️ Firmas Digitales de la Inspección</h2>
+          <p class="card-subtitle">Firma directamente en el recuadro con el dedo (en celular/tablet) o con el cursor.</p>
+
+          <div class="signatures-grid">
+            <div class="signature-box">
+              <div style="display:flex; justify-content:space-between; align-items:center;">
+                <strong style="font-size:0.85rem;" id="sig-inspector-label">Firma del Inspector / Perito</strong>
+                <button type="button" class="btn btn-outline btn-sm" onclick="clearSignature('inspector')">Borrar</button>
+              </div>
+              <canvas id="canvas-sig-inspector" class="signature-canvas" width="420" height="150"></canvas>
+              <span style="font-size:0.75rem; color:var(--text-muted);">CLAVE CONSTRUCCIÓN</span>
+            </div>
+
+            <div class="signature-box">
+              <div style="display:flex; justify-content:space-between; align-items:center;">
+                <strong style="font-size:0.85rem;">Firma de Conformidad / Recepción de Visita</strong>
+                <button type="button" class="btn btn-outline btn-sm" onclick="clearSignature('client')">Borrar</button>
+              </div>
+              <canvas id="canvas-sig-client" class="signature-canvas" width="420" height="150"></canvas>
+              <span style="font-size:0.75rem; color:var(--text-muted);">Cliente o representante presente en el inmueble</span>
+            </div>
+          </div>
+        </div>
+
+        <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:12px;">
+          <button type="button" class="btn btn-outline" onclick="switchTab('tab-rooms')">
+            ← Volver a Habitaciones
+          </button>
+          <div style="display:flex; gap:10px;">
+            <button type="button" class="btn btn-outline" onclick="saveToHistoryExplicit()">
+              💾 Guardar en Historial
+            </button>
+            <button type="button" class="btn btn-gold" onclick="toggleReportPreview(true)">
+              📄 Abrir Informe Oficial para Imprimir / Guardar PDF
+            </button>
+          </div>
+        </div>
+      </section>
+
+    </div>
+
+    <!-- REPORT PREVIEW / PRINT VIEW -->
+    <div id="report-view" class="report-view-container" style="display:none;">
+      <div class="no-print" style="max-width:960px; margin:0 auto 16px auto; display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px; background:#141414; color:#fff; padding:12px 18px; border-radius:var(--radius-md);">
+        <div>
+          <strong>📄 Vista Oficial del Informe Técnico</strong>
+          <p style="font-size:0.78rem; color:#D4D4D8;">Listo para imprimir o guardar como PDF (en la ventana de impresión elige "Guardar como PDF").</p>
+        </div>
+        <div style="display:flex; gap:8px;">
+          <button type="button" class="btn btn-outline btn-sm" onclick="toggleReportPreview(false)">
+            ✏️ Volver a Editar Formulario
+          </button>
+          <button type="button" class="btn btn-gold" onclick="window.print()">
+            🖨️ Imprimir / Descargar PDF
+          </button>
+        </div>
+      </div>
+
+      <div id="report-render-target" class="report-preview-container"></div>
+    </div>
+
+  </main>
+
+  <!-- FLOATING BOTTOM BAR -->
+  <footer class="bottom-bar no-print">
+    <div class="bottom-bar-inner">
+      <div class="autosave-indicator">
+        <span style="color:var(--status-good);">●</span>
+        <span id="autosave-text">Guardado automático activo en este dispositivo</span>
+      </div>
+      <div style="display:flex; gap:8px; align-items:center;">
+        <span style="font-size:0.8rem; font-weight:600; color:var(--text-secondary);" id="bottom-pkg-indicator">Paquete: Integral</span>
+        <button type="button" class="btn btn-primary btn-sm" onclick="toggleReportPreview(true)">
+          📄 Vista Previa e Informe PDF
+        </button>
+      </div>
+    </div>
+  </footer>
+
+  <!-- MODAL: AGREGAR HABITACIÓN / ÁREA -->
+  <div class="modal-backdrop" id="modal-add-room">
+    <div class="modal-card">
+      <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px;">
+        <h3 style="font-size:1.05rem; font-weight:700;">➕ Agregar Área o Habitación</h3>
+        <button type="button" class="btn btn-outline btn-sm" onclick="closeAddRoomModal()">✕</button>
+      </div>
+      <p style="font-size:0.82rem; color:var(--text-secondary); margin-bottom:14px;">
+        Elige el tipo de espacio para configurar automáticamente sus puntos de revisión (por ejemplo, cocinas y baños activan las pruebas hidráulicas y sanitarias).
+      </p>
+
+      <div class="form-group" style="margin-bottom:12px;">
+        <label>Tipo de Área / Habitación</label>
+        <select class="form-control" id="new-room-type" onchange="suggestRoomName()">
+          <option value="recamara">🛏️ Recámara / Habitación</option>
+          <option value="bano">🚿 Baño Completo (con regadera)</option>
+          <option value="medio_bano">🚽 Medio Baño (Visitas)</option>
+          <option value="cocina">🍳 Cocina</option>
+          <option value="sala_comedor">🛋️ Sala / Comedor / Estancia</option>
+          <option value="patio">🧺 Patio de Servicio / Lavandería</option>
+          <option value="exterior">🌳 Jardín / Terraza / Balcón</option>
+          <option value="cochera">🚗 Cochera / Estacionamiento</option>
+          <option value="escaleras">🪜 Escaleras / Pasillo / Vestíbulo</option>
+          <option value="estudio">💻 Estudio / Oficina / Sala TV</option>
+        </select>
+      </div>
+
+      <div class="form-group" style="margin-bottom:18px;">
+        <label>Nombre Identificador del Área</label>
+        <input type="text" class="form-control" id="new-room-name" placeholder="Ej. Recámara Principal, Baño 2, Terraza..." />
+      </div>
+
+      <div style="display:flex; justify-content:flex-end; gap:8px;">
+        <button type="button" class="btn btn-outline" onclick="closeAddRoomModal()">Cancelar</button>
+        <button type="button" class="btn btn-gold" onclick="confirmAddRoom()">Agregar Área</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- MODAL: HISTORIAL DE INSPECCIONES -->
+  <div class="modal-backdrop" id="modal-history">
+    <div class="modal-card">
+      <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px;">
+        <h3 style="font-size:1.05rem; font-weight:700;">📂 Inspecciones Guardadas en este Dispositivo</h3>
+        <button type="button" class="btn btn-outline btn-sm" onclick="closeHistoryModal()">✕</button>
+      </div>
+      <p style="font-size:0.82rem; color:var(--text-secondary); margin-bottom:14px;">
+        Puedes guardar múltiples visitas de inspección y retomarlas cuando quieras.
+      </p>
+      <div id="history-list-container" style="display:flex; flex-direction:column; gap:8px; margin-bottom:16px;"></div>
+      <div style="display:flex; justify-content:space-between;">
+        <button type="button" class="btn btn-gold btn-sm" onclick="saveToHistoryExplicit()">💾 Guardar Inspección Actual</button>
+        <button type="button" class="btn btn-outline btn-sm" onclick="closeHistoryModal()">Cerrar</button>
+      </div>
+    </div>
+  </div>
+
+  <script src="app.js"></script>
+</body>
+</html>
