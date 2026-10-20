@@ -424,13 +424,40 @@ function renderAll() {
 // PERSISTENCIA Y RESPALDO (LOCALSTORAGE + JSON)
 // ============================================================================
 
+function isCurrentFormWorthIndexing(formObj) {
+  if (!formObj) return false;
+  if (formObj.package) return true;
+  if (formObj.meta?.clientName?.trim() || formObj.meta?.address?.trim()) return true;
+  return false;
+}
+
+function syncCurrentToDatabaseSilent() {
+  if (!isCurrentFormWorthIndexing(state)) return;
+  try {
+    const list = getHistoryList();
+    const idx = list.findIndex(item => item.id === state.id || (item.meta?.folio && item.meta.folio === state.meta?.folio));
+    const copy = JSON.parse(JSON.stringify(state));
+    copy.savedAt = new Date().toISOString();
+    if (idx >= 0) {
+      list[idx] = copy;
+    } else {
+      list.unshift(copy);
+    }
+    localStorage.setItem(STORAGE_HISTORY_KEY, JSON.stringify(list));
+    updateHistoryCountBadge();
+  } catch (e) {
+    console.warn('No se pudo sincronizar automáticamente en la base de datos local:', e);
+  }
+}
+
 function saveState() {
   try {
     localStorage.setItem(STORAGE_CURRENT_KEY, JSON.stringify(state));
+    syncCurrentToDatabaseSilent();
     const indicator = document.getElementById('autosave-text');
     if (indicator) {
       const timeStr = new Date().toLocaleTimeString('es-MX', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
-      indicator.textContent = `Guardado automático: ${timeStr}`;
+      indicator.textContent = `Guardado en Base de Datos: ${timeStr}`;
     }
   } catch (e) {
     console.warn('Error guardando en localStorage (posible límite por fotos):', e);
@@ -465,12 +492,14 @@ function updateHistoryCountBadge() {
   const list = getHistoryList();
   const el = document.getElementById('saved-count');
   if (el) el.textContent = list.length;
+  const elMob = document.getElementById('saved-count-mob');
+  if (elMob) elMob.textContent = list.length;
 }
 
 function saveToHistoryExplicit() {
   saveState();
   const list = getHistoryList();
-  const idx = list.findIndex(item => item.id === state.id);
+  const idx = list.findIndex(item => item.id === state.id || (item.meta?.folio && item.meta.folio === state.meta?.folio));
   const copy = JSON.parse(JSON.stringify(state));
   copy.savedAt = new Date().toISOString();
   if (idx >= 0) {
@@ -482,13 +511,14 @@ function saveToHistoryExplicit() {
     localStorage.setItem(STORAGE_HISTORY_KEY, JSON.stringify(list));
     updateHistoryCountBadge();
     renderHistoryModalList();
-    alert(`Inspección "${state.meta.folio}" guardada en el historial de este dispositivo.`);
+    showToast(`🗄️ Formulario "${state.meta.folio}" guardado en la Base de Datos`, 'success');
   } catch (e) {
-    alert('El almacenamiento del navegador está lleno. Usa el botón "💾 Respaldar" para descargar el archivo .json de la inspección.');
+    alert('El almacenamiento del navegador está lleno. Descarga la Base de Datos Maestra (.xlsx) o el respaldo (.json).');
   }
 }
 
 function openHistoryModal() {
+  syncCurrentToDatabaseSilent();
   renderHistoryModalList();
   document.getElementById('modal-history').classList.add('open');
 }
@@ -497,28 +527,133 @@ function closeHistoryModal() {
   document.getElementById('modal-history').classList.remove('open');
 }
 
+function computeStatsForFormState(formObj) {
+  const items = collectActiveItemsForFormState(formObj);
+  let evaluated = 0;
+  let good = 0;
+  let warn = 0;
+  let bad = 0;
+  items.forEach(({ entry }) => {
+    if (entry.status) evaluated++;
+    if (entry.status === 'good') good++;
+    if (entry.status === 'warn') warn++;
+    if (entry.status === 'bad') bad++;
+  });
+  const pct = items.length > 0 ? Math.round((evaluated / items.length) * 100) : 0;
+  return { total: items.length, evaluated, good, warn, bad, pct };
+}
+
 function renderHistoryModalList() {
   const container = document.getElementById('history-list-container');
+  const kpiBar = document.getElementById('db-kpi-bar');
+  if (!container) return;
+
   const list = getHistoryList();
-  if (list.length === 0) {
-    container.innerHTML = `<div style="padding:18px; text-align:center; color:var(--text-muted); font-size:0.85rem; border:1px dashed var(--border-color); border-radius:var(--radius-sm);">Aún no hay inspecciones guardadas en el historial.</div>`;
+  const searchQuery = (document.getElementById('db-search-input')?.value || '').trim().toLowerCase();
+
+  let totalGood = 0;
+  let totalWarn = 0;
+  let totalBad = 0;
+
+  list.forEach(item => {
+    const st = computeStatsForFormState(item);
+    totalGood += st.good;
+    totalWarn += st.warn;
+    totalBad += st.bad;
+  });
+
+  if (kpiBar) {
+    kpiBar.innerHTML = `
+      <div style="background:#18181B; color:#fff; padding:10px 14px; border-radius:10px;">
+        <div style="font-size:0.7rem; text-transform:uppercase; color:#A1A1AA; font-weight:700;">Total Formularios</div>
+        <div style="font-size:1.35rem; font-weight:800; color:#FACC15;">${list.length}</div>
+      </div>
+      <div style="background:#F0FDF4; border:1px solid #BBF7D0; padding:10px 14px; border-radius:10px;">
+        <div style="font-size:0.7rem; text-transform:uppercase; color:#166534; font-weight:700;">Puntos Óptimos (Total)</div>
+        <div style="font-size:1.35rem; font-weight:800; color:#15803D;">✓ ${totalGood}</div>
+      </div>
+      <div style="background:#FFFBEB; border:1px solid #FDE68A; padding:10px 14px; border-radius:10px;">
+        <div style="font-size:0.7rem; text-transform:uppercase; color:#92400E; font-weight:700;">Mantenimiento Regular</div>
+        <div style="font-size:1.35rem; font-weight:800; color:#B45309;">⚠ ${totalWarn}</div>
+      </div>
+      <div style="background:#FEF2F2; border:1px solid #FECACA; padding:10px 14px; border-radius:10px;">
+        <div style="font-size:0.7rem; text-transform:uppercase; color:#991B1B; font-weight:700;">Hallazgos Urgentes</div>
+        <div style="font-size:1.35rem; font-weight:800; color:#B91C1C;">✕ ${totalBad}</div>
+      </div>
+    `;
+  }
+
+  const filtered = list.filter(item => {
+    if (!searchQuery) return true;
+    const haystack = [
+      item.meta?.folio,
+      item.package,
+      item.meta?.clientName,
+      item.meta?.clientPhone,
+      item.meta?.address,
+      item.meta?.inspectorName,
+      item.meta?.date
+    ].filter(Boolean).join(' ').toLowerCase();
+    return haystack.includes(searchQuery);
+  });
+
+  if (filtered.length === 0) {
+    container.innerHTML = `
+      <div style="padding:24px; text-align:center; color:var(--text-muted); font-size:0.86rem; border:1px dashed var(--border-color); border-radius:12px;">
+        ${list.length === 0
+          ? 'Aún no hay formularios registrados en la Base de Datos. Conforme llenes un formulario o presiones "💾 Guardar / Actualizar Formulario Actual", aparecerá aquí automáticamente.'
+          : 'No se encontraron formularios que coincidan con tu búsqueda.'}
+      </div>
+    `;
     return;
   }
 
-  container.innerHTML = list.map(item => {
-    const pkgName = (item.package || 'sin seleccionar').toUpperCase();
+  container.innerHTML = filtered.map((item, idx) => {
+    const pkgName = (item.package || 'SIN PAQUETE').toUpperCase();
     const client = item.meta?.clientName || 'Sin nombre de cliente';
-    const addr = item.meta?.address || 'Sin dirección';
+    const phone = item.meta?.clientPhone ? ` • 📞 ${item.meta.clientPhone}` : '';
+    const addr = item.meta?.address || 'Sin dirección registrada';
+    const inspector = item.meta?.inspectorName || 'Sin inspector asignado';
+    const isCurrent = item.id === state.id;
+    const st = computeStatsForFormState(item);
+
     return `
-      <div style="border:1px solid var(--border-color); border-radius:var(--radius-sm); padding:10px 12px; display:flex; justify-content:space-between; align-items:center; gap:10px; background:#FAFAFA;">
-        <div>
-          <div style="font-weight:700; font-size:0.88rem;">${escapeHtml(item.meta?.folio || 'Sin Folio')} — <span style="color:var(--brand-gold-dark);">${pkgName}</span></div>
-          <div style="font-size:0.78rem; color:var(--text-secondary);">${escapeHtml(client)} • ${escapeHtml(addr)}</div>
-          <div style="font-size:0.72rem; color:var(--text-muted);">Fecha: ${escapeHtml(item.meta?.date || '')}</div>
+      <div style="border:${isCurrent ? '2px solid var(--brand-gold)' : '1px solid var(--border-color)'}; border-radius:12px; padding:12px 14px; display:flex; justify-content:space-between; align-items:flex-start; flex-wrap:wrap; gap:12px; background:${isCurrent ? '#FEFCE8' : '#FFFFFF'}; box-shadow:var(--shadow-xs);">
+        <div style="flex:1; min-width:240px;">
+          <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap; margin-bottom:4px;">
+            <span style="font-size:0.75rem; font-weight:800; background:#18181B; color:#FACC15; padding:2px 8px; border-radius:6px;">#${idx + 1} • ${escapeHtml(item.meta?.folio || 'S/F')}</span>
+            <span style="font-size:0.73rem; font-weight:800; background:#F4F4F5; color:#18181B; padding:2px 8px; border-radius:6px; border:1px solid #E4E4E7;">🛡️ ${escapeHtml(pkgName)}</span>
+            <span style="font-size:0.73rem; font-weight:700; color:var(--text-secondary);">📅 ${escapeHtml(item.meta?.date || '')} ${escapeHtml(item.meta?.time || '')}</span>
+            ${isCurrent ? '<span style="font-size:0.7rem; font-weight:800; color:#15803D; background:#DCFCE7; padding:2px 7px; border-radius:99px;">● Abierto actualmente</span>' : ''}
+          </div>
+          <div style="font-weight:800; font-size:0.92rem; color:var(--brand-black); margin-bottom:2px;">
+            👤 ${escapeHtml(client)}${escapeHtml(phone)}
+          </div>
+          <div style="font-size:0.8rem; color:var(--text-secondary); margin-bottom:6px;">
+            📍 ${escapeHtml(addr)}
+            ${item.meta?.mapsUrl ? ` — <a href="${escapeAttr(item.meta.mapsUrl)}" target="_blank" rel="noopener noreferrer" style="color:#0284C7; font-weight:700;">🗺️ Ver en Maps</a>` : ''}
+          </div>
+          <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap; font-size:0.75rem;">
+            <span style="background:#DCFCE7; color:#166534; font-weight:700; padding:2px 8px; border-radius:6px;">✓ ${st.good} Buenos</span>
+            <span style="background:#FEF3C7; color:#92400E; font-weight:700; padding:2px 8px; border-radius:6px;">⚠ ${st.warn} Regulares</span>
+            <span style="background:#FEE2E2; color:#991B1B; font-weight:700; padding:2px 8px; border-radius:6px;">✕ ${st.bad} Urgentes</span>
+            <span style="color:var(--text-muted); font-weight:600;">Avance: ${st.pct}% • Inspector: ${escapeHtml(inspector)}</span>
+          </div>
         </div>
-        <div style="display:flex; gap:6px;">
-          <button type="button" class="btn btn-primary btn-sm" onclick="loadFromHistory('${item.id}')">Abrir</button>
-          <button type="button" class="btn btn-danger-outline btn-sm" onclick="deleteFromHistory('${item.id}')">🗑️</button>
+
+        <div style="display:flex; gap:6px; flex-wrap:wrap; align-items:center;">
+          <button type="button" class="btn btn-primary btn-sm" onclick="loadFromHistory('${item.id}')" title="Abrir este formulario para ver o editar">
+            ✏️ Abrir
+          </button>
+          <button type="button" class="btn btn-gold btn-sm" onclick="openPdfFromHistory('${item.id}')" title="Ver Informe PDF de este formulario">
+            📄 PDF
+          </button>
+          <button type="button" class="btn btn-outline btn-sm" onclick="exportSingleHistoryWorkbook('${item.id}')" title="Descargar Hoja Individual (.xlsx) de este formulario">
+            📊 Hoja (.xlsx)
+          </button>
+          <button type="button" class="btn btn-danger-outline btn-sm" onclick="deleteFromHistory('${item.id}')" title="Eliminar de la base de datos">
+            🗑️
+          </button>
         </div>
       </div>
     `;
@@ -534,24 +669,45 @@ function loadFromHistory(id) {
   renderAll();
   restoreSignaturesToCanvas();
   closeHistoryModal();
+  showToast(`📂 Formulario ${state.meta?.folio || ''} cargado`, 'info');
+}
+
+function openPdfFromHistory(id) {
+  loadFromHistory(id);
+  toggleReportPreview(true);
+}
+
+function exportSingleHistoryWorkbook(id) {
+  const list = getHistoryList();
+  const found = list.find(x => x.id === id);
+  if (!found) return;
+  const prevState = JSON.parse(JSON.stringify(state));
+  state = JSON.parse(JSON.stringify(found));
+  downloadFinishedExcelWorkbook();
+  state = prevState;
+  saveState();
 }
 
 function deleteFromHistory(id) {
-  if (!confirm('¿Eliminar esta inspección del historial guardado?')) return;
+  if (!confirm('¿Eliminar este formulario de la Base de Datos?')) return;
   const list = getHistoryList().filter(x => x.id !== id);
   localStorage.setItem(STORAGE_HISTORY_KEY, JSON.stringify(list));
   updateHistoryCountBadge();
   renderHistoryModalList();
+  showToast('🗑️ Formulario eliminado de la Base de Datos', 'info');
 }
 
 function resetNewInspection() {
-  if (!confirm('¿Iniciar una nueva visita de inspección en blanco? Esto desbloqueará la selección de paquete para la nueva visita.')) return;
+  if (!confirm('¿Iniciar una nueva visita de inspección en blanco? El formulario actual quedará guardado automáticamente en tu Base de Datos (🗄️) y se desbloqueará la selección de paquete para la nueva visita.')) return;
+  // Guarda automáticamente el formulario actual en la Base de Datos antes de reiniciar
+  syncCurrentToDatabaseSilent();
   state = createDefaultState();
   clearSignature('inspector', true);
   clearSignature('client', true);
   saveState();
   renderAll();
   switchTab('tab-general');
+  showToast('➕ Nueva visita iniciada (el formulario anterior quedó en tu Base de Datos)', 'success');
 }
 
 function exportInspectionJSON() {
@@ -578,12 +734,76 @@ function importInspectionJSON(event) {
         saveState();
         renderAll();
         restoreSignaturesToCanvas();
-        alert(`Inspección ${state.meta.folio} cargada correctamente.`);
+        showToast(`✅ Formulario ${state.meta.folio} cargado y agregado a la Base de Datos`, 'success');
+      } else if (Array.isArray(loaded)) {
+        // Si el usuario subió un respaldo de toda la base de datos en este botón, también lo soporta
+        mergeDatabaseArray(loaded);
       } else {
         alert('El archivo no tiene el formato válido de inspección de CLAVE CONSTRUCCIÓN.');
       }
     } catch (err) {
       alert('Error al leer el archivo JSON.');
+    }
+  };
+  reader.readAsText(file);
+  event.target.value = '';
+}
+
+function exportFullDatabaseJSON() {
+  syncCurrentToDatabaseSilent();
+  const list = getHistoryList();
+  if (list.length === 0) {
+    alert('Aún no hay formularios registrados en la Base de Datos.');
+    return;
+  }
+  const today = new Date().toISOString().slice(0, 10);
+  const dataStr = 'data:text/json;charset=utf-8,' + encodeURIComponent(JSON.stringify(list, null, 2));
+  const a = document.createElement('a');
+  a.setAttribute('href', dataStr);
+  a.setAttribute('download', `Base_de_Datos_CLAVE_${today}.json`);
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  showToast(`📥 Respaldo completo de Base de Datos (${list.length} formularios) descargado`, 'success');
+}
+
+function mergeDatabaseArray(importedList) {
+  const currentList = getHistoryList();
+  let added = 0;
+  let updated = 0;
+  importedList.forEach(entry => {
+    if (!entry || !entry.meta || !Array.isArray(entry.rooms)) return;
+    const idx = currentList.findIndex(x => x.id === entry.id || (x.meta?.folio && x.meta.folio === entry.meta?.folio));
+    if (idx >= 0) {
+      currentList[idx] = entry;
+      updated++;
+    } else {
+      currentList.push(entry);
+      added++;
+    }
+  });
+  localStorage.setItem(STORAGE_HISTORY_KEY, JSON.stringify(currentList));
+  updateHistoryCountBadge();
+  renderHistoryModalList();
+  showToast(`🗄️ Base de Datos actualizada: ${added} nuevos, ${updated} actualizados`, 'success');
+}
+
+function importFullDatabaseJSON(event) {
+  const file = event.target.files?.[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = (e) => {
+    try {
+      const parsed = JSON.parse(e.target.result);
+      if (Array.isArray(parsed)) {
+        mergeDatabaseArray(parsed);
+      } else if (parsed && parsed.meta && Array.isArray(parsed.rooms)) {
+        mergeDatabaseArray([parsed]);
+      } else {
+        alert('El archivo no contiene una Base de Datos válida de CLAVE CONSTRUCCIÓN.');
+      }
+    } catch (err) {
+      alert('Error al leer el archivo de Base de Datos.');
     }
   };
   reader.readAsText(file);
@@ -1703,7 +1923,8 @@ function compressImageFile(file, maxWidth, quality, callback) {
 // ESTADÍSTICAS Y RESUMEN DE HALLAZGOS
 // ============================================================================
 
-function collectAllActiveItems() {
+function collectActiveItemsForFormState(formObj) {
+  const targetState = formObj || state;
   const list = [];
 
   // 1. Equipos Centrales y Exterior
@@ -1713,13 +1934,13 @@ function collectAllActiveItems() {
         area: 'Equipos Centrales / Exterior',
         category: cat.categoryTitle,
         title: item.title,
-        entry: state.systems[item.id] || { status: '', notes: '', selectedTags: [], photos: [] }
+        entry: targetState.systems?.[item.id] || { status: '', notes: '', selectedTags: [], photos: [] }
       });
     });
   });
 
   // 2. Habitaciones
-  state.rooms.forEach(room => {
+  (targetState.rooms || []).forEach(room => {
     const activeCats = getActiveCategoriesForRoom(room);
     activeCats.forEach(cat => {
       cat.items.forEach(item => {
@@ -1727,20 +1948,20 @@ function collectAllActiveItems() {
           area: room.name,
           category: cat.categoryTitle,
           title: item.title,
-          entry: room.items[item.id] || { status: '', notes: '', selectedTags: [], photos: [] }
+          entry: room.items?.[item.id] || { status: '', notes: '', selectedTags: [], photos: [] }
         });
       });
     });
   });
 
   // 3. Integral (Dron y Humedad/Difícil acceso)
-  if (state.package === 'integral' || state.package === 'premium') {
+  if (targetState.package === 'integral' || targetState.package === 'premium') {
     DRONE_SCHEMA.forEach(item => {
       list.push({
         area: 'Registro Aéreo con Dron',
         category: '🚁 Inspección con Dron',
         title: item.title,
-        entry: state.drone.items[item.id] || { status: '', notes: '', selectedTags: [], photos: [] }
+        entry: targetState.drone?.items?.[item.id] || { status: '', notes: '', selectedTags: [], photos: [] }
       });
     });
     MOISTURE_SCHEMA.forEach(item => {
@@ -1748,12 +1969,16 @@ function collectAllActiveItems() {
         area: 'Humedad y Difícil Acceso',
         category: '💧🔦 Humedad / Áreas Difíciles',
         title: item.title,
-        entry: state.moisture.items[item.id] || { status: '', notes: '', selectedTags: [], photos: [] }
+        entry: targetState.moisture?.items?.[item.id] || { status: '', notes: '', selectedTags: [], photos: [] }
       });
     });
   }
 
   return list;
+}
+
+function collectAllActiveItems() {
+  return collectActiveItemsForFormState(state);
 }
 
 function updateStatsBar() {
@@ -2411,13 +2636,14 @@ function saveDriveFolderUrl() {
   showToast('📁 Carpeta de Google Drive fijada correctamente', 'success');
 }
 
-function buildSheetsPayload() {
-  const allItems = collectAllActiveItems();
+function buildPayloadForFormState(formObj) {
+  const fState = formObj || state;
+  const allItems = collectActiveItemsForFormState(fState);
   let evaluated = 0;
   let good = 0;
   let warn = 0;
   let bad = 0;
-  let photosCount = state.meta.coverPhoto ? 1 : 0;
+  let photosCount = fState.meta?.coverPhoto ? 1 : 0;
 
   allItems.forEach(({ entry }) => {
     if (entry.status) evaluated++;
@@ -2439,29 +2665,30 @@ function buildSheetsPayload() {
     .map(x => `[${x.area}] ${x.title}: ${x.entry.notes || 'Mantenimiento'}`)
     .join(' | ');
 
-  const roomsList = state.rooms.map(r => r.name).join(', ');
+  const roomsList = (fState.rooms || []).map(r => r.name).join(', ');
+  const savedDateStr = fState.savedAt ? new Date(fState.savedAt).toLocaleString('es-MX') : new Date().toLocaleString('es-MX');
 
   return {
-    timestamp: new Date().toLocaleString('es-MX'),
-    folio: state.meta.folio || '',
-    paquete: (state.package || 'sin seleccionar').toUpperCase(),
-    fechaVisita: state.meta.date || '',
-    horaVisita: state.meta.time || '',
-    motivo: state.meta.purpose || '',
-    clienteNombre: state.meta.clientName || '',
-    clienteTelefono: state.meta.clientPhone || '',
-    clienteCorreo: state.meta.clientEmail || '',
-    atendioEnSitio: state.meta.accompaniedBy || '',
-    direccionInmueble: state.meta.address || '',
-    coordenadasGps: state.meta.coordinates || '',
-    googleMapsUrl: state.meta.mapsUrl || '',
-    tipoInmueble: state.meta.propertyType || '',
-    superficieM2: state.meta.areaM2 || '',
-    niveles: state.meta.levels || '',
-    antiguedad: state.meta.age || '',
-    ocupacion: state.meta.occupancy || '',
-    clima: state.meta.weather || '',
-    inspector: state.meta.inspectorName || '',
+    timestamp: savedDateStr,
+    folio: fState.meta?.folio || '',
+    paquete: (fState.package || 'sin seleccionar').toUpperCase(),
+    fechaVisita: fState.meta?.date || '',
+    horaVisita: fState.meta?.time || '',
+    motivo: fState.meta?.purpose || '',
+    clienteNombre: fState.meta?.clientName || '',
+    clienteTelefono: fState.meta?.clientPhone || '',
+    clienteCorreo: fState.meta?.clientEmail || '',
+    atendioEnSitio: fState.meta?.accompaniedBy || '',
+    direccionInmueble: fState.meta?.address || '',
+    coordenadasGps: fState.meta?.coordinates || '',
+    googleMapsUrl: fState.meta?.mapsUrl || '',
+    tipoInmueble: fState.meta?.propertyType || '',
+    superficieM2: fState.meta?.areaM2 || '',
+    niveles: fState.meta?.levels || '',
+    antiguedad: fState.meta?.age || '',
+    ocupacion: fState.meta?.occupancy || '',
+    clima: fState.meta?.weather || '',
+    inspector: fState.meta?.inspectorName || '',
     avancePorcentaje: `${progressPct}%`,
     puntosBuenos: good,
     puntosRegulares: warn,
@@ -2470,14 +2697,18 @@ function buildSheetsPayload() {
     habitacionesEvaluadas: roomsList,
     hallazgosUrgentes: urgentFindings || 'Ninguno',
     hallazgosRegulares: regularFindings || 'Ninguno',
-    dronVideoUrl: state.drone?.videoUrl || '',
-    humedadLecturaMax: state.moisture?.maxReading || '',
-    tour360Url: state.premium?.tourUrl || '',
-    peritoColegiado: state.premium?.profName || '',
-    cedulaProfesional: state.premium?.cedula || '',
-    dictamenHabitabilidad: state.package === 'premium' ? (state.premium?.verdict || '') : 'N/A',
-    comentariosGenerales: state.meta.generalNotes || ''
+    dronVideoUrl: fState.drone?.videoUrl || '',
+    humedadLecturaMax: fState.moisture?.maxReading || '',
+    tour360Url: fState.premium?.tourUrl || '',
+    peritoColegiado: fState.premium?.profName || '',
+    cedulaProfesional: fState.premium?.cedula || '',
+    dictamenHabitabilidad: fState.package === 'premium' ? (fState.premium?.verdict || '') : 'N/A',
+    comentariosGenerales: fState.meta?.generalNotes || ''
   };
+}
+
+function buildSheetsPayload() {
+  return buildPayloadForFormState(state);
 }
 
 function formatStatusLabelForSheet(status) {
@@ -2947,6 +3178,353 @@ function openDriveFolderAndDownload() {
 
 function exportInspectionCSV() {
   downloadFinishedExcelWorkbook();
+}
+
+// ============================================================================
+// GENERADOR DE LA BASE DE DATOS MAESTRA DE TODOS LOS FORMULARIOS (.XLSX)
+// ============================================================================
+
+function createMasterDatabaseWorkbookBlob() {
+  saveState();
+  syncCurrentToDatabaseSilent();
+
+  let list = getHistoryList();
+  if (list.length === 0) {
+    list = [JSON.parse(JSON.stringify(state))];
+  }
+
+  if (typeof XLSX === 'undefined') {
+    alert('La librería Excel aún está cargando. Intenta de nuevo en un segundo.');
+    return null;
+  }
+
+  const wb = XLSX.utils.book_new();
+
+  const thinBorder = {
+    top: { style: 'thin', color: { rgb: 'D4D4D8' } },
+    bottom: { style: 'thin', color: { rgb: 'D4D4D8' } },
+    left: { style: 'thin', color: { rgb: 'D4D4D8' } },
+    right: { style: 'thin', color: { rgb: 'D4D4D8' } }
+  };
+
+  const styleBannerBlack = {
+    fill: { fgColor: { rgb: '141414' } },
+    font: { bold: true, color: { rgb: 'FACC15' }, sz: 14, name: 'Calibri' },
+    alignment: { horizontal: 'center', vertical: 'center' }
+  };
+
+  const styleSubBannerGold = {
+    fill: { fgColor: { rgb: 'FEF9C3' } },
+    font: { bold: true, color: { rgb: '18181B' }, sz: 11, name: 'Calibri' },
+    alignment: { horizontal: 'center', vertical: 'center' },
+    border: thinBorder
+  };
+
+  const styleTableHeader = {
+    fill: { fgColor: { rgb: '18181B' } },
+    font: { bold: true, color: { rgb: 'FACC15' }, sz: 10, name: 'Calibri' },
+    alignment: { horizontal: 'center', vertical: 'center', wrapText: true },
+    border: thinBorder
+  };
+
+  const styleLabelCell = {
+    fill: { fgColor: { rgb: 'F4F4F5' } },
+    font: { bold: true, color: { rgb: '18181B' }, sz: 10, name: 'Calibri' },
+    alignment: { horizontal: 'left', vertical: 'center', wrapText: true },
+    border: thinBorder
+  };
+
+  const styleValueCell = {
+    fill: { fgColor: { rgb: 'FFFFFF' } },
+    font: { bold: false, color: { rgb: '18181B' }, sz: 10, name: 'Calibri' },
+    alignment: { horizontal: 'left', vertical: 'center', wrapText: true },
+    border: thinBorder
+  };
+
+  // =========================================================================
+  // PESTAÑA 1: BASE DE DATOS GENERAL DE FORMULARIOS (1 FILA POR FORMULARIO)
+  // =========================================================================
+  const dbHeaders = [
+    'N.º', 'Fecha Guardado', 'Folio', 'Nivel Servicio', 'Fecha Visita', 'Hora',
+    'Cliente / Solicitante', 'Teléfono', 'Correo Electrónico', 'Atendió en Sitio',
+    'Dirección del Inmueble', 'Coordenadas GPS', 'Enlace Google Maps',
+    'Tipo Propiedad', 'Superficie (m²)', 'Niveles', 'Antigüedad', 'Ocupación',
+    'Clima', 'Inspector Responsable', '% Avance',
+    '✅ Puntos Buenos', '⚠️ Puntos Regulares', '❌ Puntos Urgentes', 'Total Fotos',
+    'Habitaciones Evaluadas', 'Resumen Hallazgos Urgentes', 'Resumen Hallazgos Regulares',
+    'URL Video Dron', 'Lectura Máx Humedad', 'URL Tour 360°',
+    'Perito Colegiado', 'Cédula Profesional', 'Dictamen Habitabilidad', 'Comentarios Generales'
+  ];
+
+  const ws1Data = [
+    ['CLAVE CONSTRUCCIÓN — BASE DE DATOS MAESTRA DE FORMULARIOS DE INSPECCIÓN', ...Array(dbHeaders.length - 1).fill('')],
+    [`TOTAL DE FORMULARIOS REGISTRADOS: ${list.length}   |   GENERADO EL: ${new Date().toLocaleString('es-MX')}`, ...Array(dbHeaders.length - 1).fill('')],
+    dbHeaders
+  ];
+
+  list.forEach((formObj, idx) => {
+    const p = buildPayloadForFormState(formObj);
+    ws1Data.push([
+      idx + 1,
+      p.timestamp,
+      p.folio,
+      p.paquete,
+      p.fechaVisita,
+      p.horaVisita,
+      p.clienteNombre || '—',
+      p.clienteTelefono || '—',
+      p.clienteCorreo || '—',
+      p.atendioEnSitio || '—',
+      p.direccionInmueble || '—',
+      p.coordenadasGps || '—',
+      p.googleMapsUrl || '—',
+      p.tipoInmueble || '—',
+      p.superficieM2 || '—',
+      p.niveles || '—',
+      p.antiguedad || '—',
+      p.ocupacion || '—',
+      p.clima || '—',
+      p.inspector || '—',
+      p.avancePorcentaje,
+      p.puntosBuenos,
+      p.puntosRegulares,
+      p.puntosUrgentesMalos,
+      p.totalFotos,
+      p.habitacionesEvaluadas || '—',
+      p.hallazgosUrgentes,
+      p.hallazgosRegulares,
+      p.dronVideoUrl || '—',
+      p.humedadLecturaMax || '—',
+      p.tour360Url || '—',
+      p.peritoColegiado || '—',
+      p.cedulaProfesional || '—',
+      p.dictamenHabitabilidad || '—',
+      p.comentariosGenerales || '—'
+    ]);
+  });
+
+  const ws1 = XLSX.utils.aoa_to_sheet(ws1Data);
+  ws1['!merges'] = [
+    { s: { r: 0, c: 0 }, e: { r: 0, c: 12 } },
+    { s: { r: 1, c: 0 }, e: { r: 1, c: 12 } }
+  ];
+  ws1['!cols'] = dbHeaders.map((h, i) => {
+    if (i === 0) return { wch: 6 };
+    if (i === 10 || i === 25 || i === 26 || i === 27 || i === 34) return { wch: 42 };
+    return { wch: 22 };
+  });
+
+  const range1 = XLSX.utils.decode_range(ws1['!ref']);
+  for (let R = range1.s.r; R <= range1.e.r; ++R) {
+    for (let C = range1.s.c; C <= range1.e.c; ++C) {
+      const addr = XLSX.utils.encode_cell({ r: R, c: C });
+      if (!ws1[addr]) ws1[addr] = { t: 's', v: '' };
+      if (R === 0) ws1[addr].s = styleBannerBlack;
+      else if (R === 1) ws1[addr].s = styleSubBannerGold;
+      else if (R === 2) ws1[addr].s = styleTableHeader;
+      else {
+        if (C === 2 || C === 6) ws1[addr].s = styleLabelCell;
+        else if (C === 21) ws1[addr].s = getStatusCellStyle('good', thinBorder);
+        else if (C === 22) ws1[addr].s = getStatusCellStyle('warn', thinBorder);
+        else if (C === 23) ws1[addr].s = getStatusCellStyle('bad', thinBorder);
+        else ws1[addr].s = styleValueCell;
+      }
+    }
+  }
+
+  XLSX.utils.book_append_sheet(wb, ws1, '1_Base_Datos_Formularios');
+
+  // =========================================================================
+  // PESTAÑA 2: BASE DE DATOS DE HALLAZGOS DE TODOS LOS INMUEBLES
+  // =========================================================================
+  const findingsHeaders = [
+    'N.º', 'Folio Formulario', 'Fecha Visita', 'Paquete', 'Cliente',
+    'Dirección del Inmueble', 'Área / Habitación', 'Especialidad / Categoría',
+    'Elemento Evaluado', 'Prioridad / Estado', 'Opciones Marcadas (✓)', 'Detalle del Hallazgo'
+  ];
+
+  const ws2Data = [
+    ['CLAVE CONSTRUCCIÓN — BASE DE DATOS HISTÓRICA DE HALLAZGOS Y REPARACIONES', ...Array(findingsHeaders.length - 1).fill('')],
+    findingsHeaders
+  ];
+
+  const findingRowStatuses = [];
+  let fCounter = 1;
+
+  list.forEach(formObj => {
+    const items = collectActiveItemsForFormState(formObj);
+    const formFindings = items.filter(x => x.entry.status === 'bad' || x.entry.status === 'warn');
+    formFindings.forEach(f => {
+      const tags = Array.isArray(f.entry.selectedTags) ? f.entry.selectedTags.join(', ') : '';
+      ws2Data.push([
+        fCounter++,
+        formObj.meta?.folio || '—',
+        formObj.meta?.date || '—',
+        (formObj.package || '—').toUpperCase(),
+        formObj.meta?.clientName || '—',
+        formObj.meta?.address || '—',
+        f.area,
+        f.category,
+        f.title,
+        formatStatusLabelForSheet(f.entry.status),
+        tags || '—',
+        f.entry.notes || 'Requiere revisión.'
+      ]);
+      findingRowStatuses.push(f.entry.status);
+    });
+  });
+
+  if (findingRowStatuses.length === 0) {
+    ws2Data.push(['—', '—', '—', '—', '—', '—', '—', '—', 'Sin hallazgos registrados en la base de datos', '—', '—', '—']);
+    findingRowStatuses.push('');
+  }
+
+  const ws2 = XLSX.utils.aoa_to_sheet(ws2Data);
+  ws2['!merges'] = [{ s: { r: 0, c: 0 }, e: { r: 0, c: 11 } }];
+  ws2['!cols'] = [
+    { wch: 6 }, { wch: 18 }, { wch: 14 }, { wch: 14 }, { wch: 24 },
+    { wch: 34 }, { wch: 24 }, { wch: 26 }, { wch: 30 }, { wch: 26 }, { wch: 32 }, { wch: 44 }
+  ];
+
+  const range2 = XLSX.utils.decode_range(ws2['!ref']);
+  for (let R = range2.s.r; R <= range2.e.r; ++R) {
+    for (let C = range2.s.c; C <= range2.e.c; ++C) {
+      const addr = XLSX.utils.encode_cell({ r: R, c: C });
+      if (!ws2[addr]) ws2[addr] = { t: 's', v: '' };
+      if (R === 0) ws2[addr].s = styleBannerBlack;
+      else if (R === 1) ws2[addr].s = styleTableHeader;
+      else {
+        const st = findingRowStatuses[R - 2];
+        if (C === 9 && st) ws2[addr].s = getStatusCellStyle(st, thinBorder);
+        else if (C === 1 || C === 4 || C === 8) ws2[addr].s = styleLabelCell;
+        else ws2[addr].s = styleValueCell;
+      }
+    }
+  }
+
+  XLSX.utils.book_append_sheet(wb, ws2, '2_Base_Datos_Hallazgos');
+
+  // =========================================================================
+  // PESTAÑA 3: DETALLE DE TODOS LOS CHECKLISTS DE TODOS LOS FORMULARIOS
+  // =========================================================================
+  const allCheckHeaders = [
+    'Folio Formulario', 'Fecha', 'Cliente', 'Dirección', 'Área / Habitación',
+    'Categoría', 'Punto de Inspección', 'Calificación', 'Opciones Marcadas (✓)', 'Observaciones'
+  ];
+
+  const ws3Data = [
+    ['CLAVE CONSTRUCCIÓN — REGISTRO DETALLADO DE PUNTOS EVALUADOS (TODOS LOS FORMULARIOS)', ...Array(allCheckHeaders.length - 1).fill('')],
+    allCheckHeaders
+  ];
+
+  const allCheckStatuses = [];
+  list.forEach(formObj => {
+    const items = collectActiveItemsForFormState(formObj);
+    items.forEach(it => {
+      // Incluye todos los puntos calificados o con notas/opciones
+      if (it.entry.status || it.entry.notes || (it.entry.selectedTags && it.entry.selectedTags.length > 0)) {
+        const tags = Array.isArray(it.entry.selectedTags) ? it.entry.selectedTags.join(', ') : '';
+        ws3Data.push([
+          formObj.meta?.folio || '—',
+          formObj.meta?.date || '—',
+          formObj.meta?.clientName || '—',
+          formObj.meta?.address || '—',
+          it.area,
+          it.category,
+          it.title,
+          formatStatusLabelForSheet(it.entry.status),
+          tags || '—',
+          it.entry.notes || '—'
+        ]);
+        allCheckStatuses.push(it.entry.status || '');
+      }
+    });
+  });
+
+  if (allCheckStatuses.length === 0) {
+    ws3Data.push(['—', '—', '—', '—', '—', '—', 'Aún no hay puntos calificados', '—', '—', '—']);
+    allCheckStatuses.push('');
+  }
+
+  const ws3 = XLSX.utils.aoa_to_sheet(ws3Data);
+  ws3['!merges'] = [{ s: { r: 0, c: 0 }, e: { r: 0, c: 9 } }];
+  ws3['!cols'] = [
+    { wch: 18 }, { wch: 14 }, { wch: 24 }, { wch: 32 }, { wch: 24 },
+    { wch: 26 }, { wch: 32 }, { wch: 24 }, { wch: 32 }, { wch: 42 }
+  ];
+
+  const range3 = XLSX.utils.decode_range(ws3['!ref']);
+  for (let R = range3.s.r; R <= range3.e.r; ++R) {
+    for (let C = range3.s.c; C <= range3.e.c; ++C) {
+      const addr = XLSX.utils.encode_cell({ r: R, c: C });
+      if (!ws3[addr]) ws3[addr] = { t: 's', v: '' };
+      if (R === 0) ws3[addr].s = styleBannerBlack;
+      else if (R === 1) ws3[addr].s = styleTableHeader;
+      else {
+        const st = allCheckStatuses[R - 2];
+        if (C === 7) ws3[addr].s = getStatusCellStyle(st, thinBorder);
+        else if (C === 0 || C === 6) ws3[addr].s = styleLabelCell;
+        else ws3[addr].s = styleValueCell;
+      }
+    }
+  }
+
+  XLSX.utils.book_append_sheet(wb, ws3, '3_Detalle_Todos_Formularios');
+
+  const wbout = XLSX.write(wb, { bookType: 'xlsx', type: 'array' });
+  return new Blob([wbout], {
+    type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+  });
+}
+
+function getMasterDatabaseFilename() {
+  const today = new Date().toISOString().slice(0, 10);
+  return `Base_de_Datos_Inspecciones_CLAVE_${today}.xlsx`;
+}
+
+function downloadMasterDatabaseWorkbook() {
+  const blob = createMasterDatabaseWorkbookBlob();
+  if (!blob) return;
+
+  const filename = getMasterDatabaseFilename();
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  URL.revokeObjectURL(url);
+
+  const count = getHistoryList().length || 1;
+  showToast(`🗄️ Base de Datos Maestra (${count} formularios) descargada: ${filename}`, 'success');
+}
+
+async function shareMasterDatabaseToDrive() {
+  const blob = createMasterDatabaseWorkbookBlob();
+  if (!blob) return;
+
+  const filename = getMasterDatabaseFilename();
+  const file = new File([blob], filename, {
+    type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+  });
+
+  if (navigator.canShare && navigator.canShare({ files: [file] })) {
+    try {
+      await navigator.share({
+        title: 'Base de Datos de Inspecciones - CLAVE CONSTRUCCIÓN',
+        text: 'Hoja Maestra con la Base de Datos de Formularios de Inspección - CLAVE CONSTRUCCIÓN',
+        files: [file]
+      });
+      showToast('☁️ Base de Datos enviada a Google Drive', 'success');
+      return;
+    } catch (err) {
+      if (err.name === 'AbortError') return;
+    }
+  }
+
+  downloadMasterDatabaseWorkbook();
+  openDriveFolderAndDownload();
 }
 
 // ============================================================================
