@@ -243,9 +243,78 @@
               <input type="text" class="form-control" id="meta-accompaniedBy" oninput="updateMeta('accompaniedBy', this.value)" placeholder="Ej. Propietario, Asesor inmobiliario, Residente" />
             </div>
 
-            <div class="form-group full-width">
-              <label>Dirección Completa del Inmueble</label>
-              <input type="text" class="form-control" id="meta-address" oninput="updateMeta('address', this.value)" placeholder="Calle, Número, Interior, Colonia, Municipio/Alcaldía, Ciudad, C.P." />
+            <div class="form-group full-width" style="background: var(--bg-subtle); padding: 14px; border-radius: var(--radius-md); border: 1px solid var(--border-color);">
+              <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px; margin-bottom:6px;">
+                <label style="font-size:0.84rem; color:var(--brand-black); display:flex; align-items:center; gap:6px;">
+                  📍 Dirección y Ubicación en Google Maps
+                </label>
+                <div style="display:flex; gap:6px; flex-wrap:wrap;">
+                  <button type="button" class="btn btn-green btn-sm" id="btn-geolocate-gps" onclick="geolocatePropertyGPS()">
+                    📍 Geolocalizar Mi Ubicación (GPS)
+                  </button>
+                  <button type="button" class="btn btn-outline btn-sm" onclick="locateAddressOnGoogleMaps()">
+                    🗺️ Buscar Dirección en Mapa
+                  </button>
+                </div>
+              </div>
+
+              <input
+                type="text"
+                class="form-control"
+                id="meta-address"
+                oninput="updateMeta('address', this.value)"
+                keydown="if(event.key==='Enter'){event.preventDefault();locateAddressOnGoogleMaps();}"
+                placeholder="Calle, Número, Interior, Colonia, Municipio/Alcaldía, Ciudad, C.P."
+              />
+
+              <div class="form-grid" style="margin-top:10px; gap:10px;">
+                <div class="form-group">
+                  <label>Coordenadas GPS (Latitud, Longitud)</label>
+                  <input
+                    type="text"
+                    class="form-control"
+                    id="meta-coordinates"
+                    oninput="updateMeta('coordinates', this.value); refreshGoogleMapEmbed();"
+                    placeholder="Ej. 19.432608, -99.133209"
+                  />
+                </div>
+                <div class="form-group">
+                  <label>Enlace Directo de Google Maps</label>
+                  <div style="display:flex; gap:6px;">
+                    <input
+                      type="url"
+                      class="form-control"
+                      style="flex:1;"
+                      id="meta-mapsUrl"
+                      oninput="updateMeta('mapsUrl', this.value)"
+                      placeholder="https://www.google.com/maps?q=..."
+                    />
+                    <a
+                      href="#"
+                      target="_blank"
+                      id="btn-open-gmaps"
+                      class="btn btn-outline btn-sm"
+                      style="display:none; white-space:nowrap;"
+                      title="Abrir ubicación en Google Maps"
+                    >
+                      ↗️ Abrir Maps
+                    </a>
+                  </div>
+                </div>
+              </div>
+
+              <!-- MAPA INTERACTIVO DE GOOGLE MAPS -->
+              <div id="google-map-wrapper" style="display:none; margin-top:12px; border-radius:var(--radius-sm); overflow:hidden; border:1.5px solid var(--status-good);">
+                <iframe
+                  id="google-map-iframe"
+                  width="100%"
+                  height="250"
+                  style="border:0; display:block;"
+                  loading="lazy"
+                  allowfullscreen
+                  referrerpolicy="no-referrer-when-downgrade"
+                ></iframe>
+              </div>
             </div>
 
             <div class="form-group">

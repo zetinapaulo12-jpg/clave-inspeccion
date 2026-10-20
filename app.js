@@ -341,6 +341,8 @@ function createDefaultState() {
       clientEmail: '',
       accompaniedBy: '',
       address: '',
+      coordinates: '',
+      mapsUrl: '',
       propertyType: 'Casa Habitación',
       areaM2: '',
       levels: '2 niveles',
@@ -782,8 +784,9 @@ function goNextFromIntegral() {
 function syncMetaInputs() {
   const fields = [
     'folio', 'date', 'time', 'purpose', 'clientName', 'clientPhone',
-    'clientEmail', 'accompaniedBy', 'address', 'propertyType', 'areaM2',
-    'levels', 'age', 'occupancy', 'weather', 'inspectorName', 'generalNotes'
+    'clientEmail', 'accompaniedBy', 'address', 'coordinates', 'mapsUrl',
+    'propertyType', 'areaM2', 'levels', 'age', 'occupancy', 'weather',
+    'inspectorName', 'generalNotes'
   ];
   fields.forEach(f => {
     const el = document.getElementById(`meta-${f}`);
@@ -798,6 +801,7 @@ function syncMetaInputs() {
     headerFolio.textContent = `Folio: ${state.meta.folio || 'Sin Folio'} • ${state.meta.clientName || 'Registro Digital de Visita'}`;
   }
 
+  refreshGoogleMapEmbed();
   renderCoverPhotoPreview();
 }
 
@@ -813,7 +817,146 @@ function updateMeta(field, value) {
       headerFolio.textContent = `Folio: ${state.meta.folio || 'Sin Folio'} • ${state.meta.clientName || 'Registro Digital de Visita'}`;
     }
   }
+  if (field === 'mapsUrl') {
+    const openBtn = document.getElementById('btn-open-gmaps');
+    if (openBtn) {
+      openBtn.href = value || '#';
+      openBtn.style.display = value ? 'inline-flex' : 'none';
+    }
+  }
   saveState();
+}
+
+function geolocatePropertyGPS() {
+  if (!navigator.geolocation) {
+    showToast('❌ Tu navegador no soporta geolocalización GPS');
+    return;
+  }
+
+  const btn = document.getElementById('btn-geolocate-gps');
+  const origText = btn ? btn.innerHTML : '';
+  if (btn) {
+    btn.disabled = true;
+    btn.innerHTML = '⏳ Obteniendo GPS...';
+  }
+
+  navigator.geolocation.getCurrentPosition(
+    async (pos) => {
+      const lat = pos.coords.latitude.toFixed(6);
+      const lng = pos.coords.longitude.toFixed(6);
+      const coordsStr = `${lat}, ${lng}`;
+      const gmapsLink = `https://www.google.com/maps?q=${lat},${lng}`;
+
+      state.meta.coordinates = coordsStr;
+      state.meta.mapsUrl = gmapsLink;
+
+      const coordEl = document.getElementById('meta-coordinates');
+      const urlEl = document.getElementById('meta-mapsUrl');
+      if (coordEl) {
+        coordEl.value = coordsStr;
+        coordEl.classList.add('filled-green');
+      }
+      if (urlEl) {
+        urlEl.value = gmapsLink;
+        urlEl.classList.add('filled-green');
+      }
+
+      refreshGoogleMapEmbed();
+      saveState();
+      showToast(`📍 Ubicación GPS capturada (${coordsStr})`);
+
+      // Intentar obtener la dirección postal automáticamente si el campo de dirección está vacío
+      try {
+        const res = await fetch(`https://nominatim.openstreetmap.org/reverse?format=jsonv2&lat=${lat}&lon=${lng}`, {
+          headers: { 'Accept-Language': 'es' }
+        });
+        if (res.ok) {
+          const data = await res.json();
+          if (data && data.display_name && !state.meta.address?.trim()) {
+            state.meta.address = data.display_name;
+            const addrEl = document.getElementById('meta-address');
+            if (addrEl) {
+              addrEl.value = data.display_name;
+              addrEl.classList.add('filled-green');
+            }
+            saveState();
+            showToast('🏠 Dirección autocompletada con éxito');
+          }
+        }
+      } catch (e) {
+        // Silencioso si no hay red para geocodificación inversa
+      }
+
+      if (btn) {
+        btn.disabled = false;
+        btn.innerHTML = origText;
+      }
+    },
+    (err) => {
+      if (btn) {
+        btn.disabled = false;
+        btn.innerHTML = origText;
+      }
+      let msg = 'No se pudo obtener la ubicación GPS. Asegúrate de permitir el acceso a la ubicación en tu navegador/teléfono.';
+      if (err.code === 1) msg = 'Permiso de ubicación denegado. Actívalo en el candado de la barra de direcciones.';
+      showToast(`⚠️ ${msg}`);
+    },
+    { enableHighAccuracy: true, timeout: 12000, maximumAge: 0 }
+  );
+}
+
+function locateAddressOnGoogleMaps() {
+  const addr = (state.meta.address || '').trim();
+  const coords = (state.meta.coordinates || '').trim();
+  const query = addr || coords;
+
+  if (!query) {
+    showToast('⚠️ Escribe primero la dirección del inmueble o usa el botón de GPS');
+    return;
+  }
+
+  const gmapsLink = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(query)}`;
+  state.meta.mapsUrl = gmapsLink;
+
+  const urlEl = document.getElementById('meta-mapsUrl');
+  if (urlEl) {
+    urlEl.value = gmapsLink;
+    urlEl.classList.add('filled-green');
+  }
+
+  refreshGoogleMapEmbed(query);
+  saveState();
+  showToast('🗺️ Ubicación cargada en Google Maps');
+}
+
+function refreshGoogleMapEmbed(forcedQuery) {
+  const wrapper = document.getElementById('google-map-wrapper');
+  const iframe = document.getElementById('google-map-iframe');
+  const openBtn = document.getElementById('btn-open-gmaps');
+
+  const coords = (state.meta.coordinates || '').trim();
+  const addr = (state.meta.address || '').trim();
+  const mapsUrl = (state.meta.mapsUrl || '').trim();
+
+  if (openBtn) {
+    const targetHref = mapsUrl || (coords ? `https://www.google.com/maps?q=${encodeURIComponent(coords)}` : (addr ? `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(addr)}` : ''));
+    openBtn.href = targetHref || '#';
+    openBtn.style.display = targetHref ? 'inline-flex' : 'none';
+  }
+
+  const embedQuery = forcedQuery || coords || (mapsUrl ? addr : '');
+  if (!wrapper || !iframe) return;
+
+  if (embedQuery) {
+    const newSrc = `https://maps.google.com/maps?q=${encodeURIComponent(embedQuery)}&t=m&z=17&ie=UTF8&iwloc=&output=embed`;
+    if (iframe.dataset.lastQuery !== embedQuery) {
+      iframe.src = newSrc;
+      iframe.dataset.lastQuery = embedQuery;
+    }
+    wrapper.style.display = 'block';
+  } else {
+    wrapper.style.display = 'none';
+  }
 }
 
 function handleCoverPhotoUpload(event) {
@@ -2069,7 +2212,15 @@ function renderOfficialReportHTML() {
       </tr>
       <tr>
         <th>Dirección del Inmueble</th>
-        <td colspan="3"><strong>${escapeHtml(state.meta.address || '—')}</strong></td>
+        <td colspan="3">
+          <strong>${escapeHtml(state.meta.address || '—')}</strong>
+          ${(state.meta.coordinates || state.meta.mapsUrl) ? `
+            <div style="margin-top:4px; font-size:0.76rem; color:var(--text-secondary);">
+              ${state.meta.coordinates ? `📍 <strong>GPS:</strong> ${escapeHtml(state.meta.coordinates)} &nbsp;` : ''}
+              ${state.meta.mapsUrl ? `<a href="${escapeAttr(state.meta.mapsUrl)}" target="_blank" rel="noopener noreferrer" style="color:#0284C7; font-weight:700; text-decoration:underline;">🗺️ Ver ubicación exacta en Google Maps</a>` : ''}
+            </div>
+          ` : ''}
+        </td>
       </tr>
       <tr>
         <th>Tipo de Propiedad</th>
@@ -2289,6 +2440,8 @@ function buildSheetsPayload() {
     clienteCorreo: state.meta.clientEmail || '',
     atendioEnSitio: state.meta.accompaniedBy || '',
     direccionInmueble: state.meta.address || '',
+    coordenadasGps: state.meta.coordinates || '',
+    googleMapsUrl: state.meta.mapsUrl || '',
     tipoInmueble: state.meta.propertyType || '',
     superficieM2: state.meta.areaM2 || '',
     niveles: state.meta.levels || '',
@@ -2370,6 +2523,7 @@ function exportInspectionCSV() {
   const headers = [
     'Fecha Registro', 'Folio', 'Paquete', 'Fecha Visita', 'Hora', 'Motivo',
     'Cliente', 'Telefono', 'Correo', 'Atendio en Sitio', 'Direccion Inmueble',
+    'Coordenadas GPS', 'Google Maps URL',
     'Tipo Inmueble', 'Superficie m2', 'Niveles', 'Antiguedad', 'Ocupacion',
     'Clima', 'Inspector', 'Avance', 'Puntos Buenos', 'Puntos Regulares',
     'Puntos Urgentes (Malos)', 'Total Fotos', 'Habitaciones Evaluadas',
@@ -2381,6 +2535,7 @@ function exportInspectionCSV() {
   const values = [
     p.timestamp, p.folio, p.paquete, p.fechaVisita, p.horaVisita, p.motivo,
     p.clienteNombre, p.clienteTelefono, p.clienteCorreo, p.atendioEnSitio, p.direccionInmueble,
+    p.coordenadasGps, p.googleMapsUrl,
     p.tipoInmueble, p.superficieM2, p.niveles, p.antiguedad, p.ocupacion,
     p.clima, p.inspector, p.avancePorcentaje, p.puntosBuenos, p.puntosRegulares,
     p.puntosUrgentesMalos, p.totalFotos, p.habitacionesEvaluadas,
@@ -2422,6 +2577,7 @@ function doPost(e) {
   var headers = [
     "Fecha Envío", "Folio", "Paquete", "Fecha Visita", "Hora", "Motivo",
     "Cliente", "Teléfono", "Correo", "Atendió en Sitio", "Dirección del Inmueble",
+    "Coordenadas GPS", "Google Maps URL",
     "Tipo Inmueble", "Superficie m2", "Niveles", "Antigüedad", "Ocupación",
     "Clima", "Inspector", "Avance", "Puntos Buenos", "Puntos Regulares",
     "Puntos Urgentes (Malos)", "Total Fotos", "Habitaciones Evaluadas",
@@ -2452,6 +2608,8 @@ function doPost(e) {
     data.clienteCorreo || "",
     data.atendioEnSitio || "",
     data.direccionInmueble || "",
+    data.coordenadasGps || "",
+    data.googleMapsUrl || "",
     data.tipoInmueble || "",
     data.superficieM2 || "",
     data.niveles || "",
