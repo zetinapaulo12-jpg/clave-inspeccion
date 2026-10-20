@@ -689,6 +689,15 @@ function syncPackageUI() {
     tabPremium.style.display = isPremium ? 'inline-flex' : 'none';
   }
 
+  const mobIntegral = document.getElementById('mob-tab-integral');
+  const mobPremium = document.getElementById('mob-tab-premium');
+  if (mobIntegral) {
+    mobIntegral.style.display = isIntegralOrHigher ? 'flex' : 'none';
+  }
+  if (mobPremium) {
+    mobPremium.style.display = isPremium ? 'flex' : 'none';
+  }
+
   const intBanner = document.getElementById('integral-locked-banner');
   const intContent = document.getElementById('integral-content-wrapper');
   if (intBanner && intContent) {
@@ -713,6 +722,23 @@ function syncPackageUI() {
   }
 }
 
+function toggleMobileMenu() {
+  const drawer = document.getElementById('navbar-actions-drawer');
+  const btn = document.getElementById('btn-mobile-menu');
+  if (!drawer) return;
+  const isOpen = drawer.classList.toggle('mobile-open');
+  if (btn) {
+    btn.textContent = isOpen ? '✕ Cerrar' : '☰ Menú';
+  }
+}
+
+function closeMobileMenu() {
+  const drawer = document.getElementById('navbar-actions-drawer');
+  const btn = document.getElementById('btn-mobile-menu');
+  if (drawer) drawer.classList.remove('mobile-open');
+  if (btn) btn.textContent = '☰ Menú';
+}
+
 function switchTab(tabId) {
   state.activeTab = tabId;
   document.querySelectorAll('.tab-panel').forEach(panel => {
@@ -721,6 +747,10 @@ function switchTab(tabId) {
   document.querySelectorAll('#main-tabs .nav-tab').forEach(btn => {
     btn.classList.toggle('active', btn.dataset.tab === tabId);
   });
+  document.querySelectorAll('#mobile-bottom-nav .mob-nav-item').forEach(btn => {
+    btn.classList.toggle('active', btn.dataset.tab === tabId);
+  });
+  closeMobileMenu();
   if (tabId === 'tab-closing') {
     renderFindingsSummary();
     setTimeout(resizeSignatureCanvases, 50);

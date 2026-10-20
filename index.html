@@ -17,32 +17,42 @@
       <div class="brand-header">
         <img src="assets/logo.png" alt="CLAVE CONSTRUCCIÓN" class="brand-logo" />
         <div class="brand-title-group">
-          <h1>Inspección Técnica de Inmuebles</h1>
-          <p id="header-folio-display">Folio: CLV-2026-001 • Registro Digital de Visita</p>
+          <h1>Inspección Técnica</h1>
+          <p id="header-folio-display">Folio: CLV-2026-001</p>
         </div>
       </div>
 
-      <div class="navbar-actions">
-        <button type="button" class="btn btn-outline btn-sm" onclick="openHistoryModal()">
+      <!-- BOTONES RÁPIDOS EN MÓVIL -->
+      <div class="mobile-header-btns">
+        <button type="button" class="btn btn-gold btn-sm" onclick="toggleReportPreview(true)">
+          📄 PDF
+        </button>
+        <button type="button" class="btn btn-outline btn-sm" id="btn-mobile-menu" onclick="toggleMobileMenu()">
+          ☰ Menú
+        </button>
+      </div>
+
+      <div class="navbar-actions" id="navbar-actions-drawer">
+        <button type="button" class="btn btn-outline btn-sm" onclick="openHistoryModal(); closeMobileMenu();">
           📂 Mis Inspecciones (<span id="saved-count">0</span>)
         </button>
-        <button type="button" class="btn btn-green btn-sm" onclick="sendToGoogleSheets()" id="btn-nav-sheets">
+        <button type="button" class="btn btn-green btn-sm" onclick="sendToGoogleSheets(); closeMobileMenu();" id="btn-nav-sheets">
           📊 Enviar a Google Sheets
         </button>
-        <button type="button" class="btn btn-outline btn-sm" onclick="openSheetsConfigModal()" title="Configurar conexión con Google Sheets">
-          ⚙️
+        <button type="button" class="btn btn-outline btn-sm" onclick="openSheetsConfigModal(); closeMobileMenu();" title="Configurar conexión con Google Sheets">
+          ⚙️ Sheets
         </button>
-        <button type="button" class="btn btn-outline btn-sm" onclick="exportInspectionJSON()" title="Descargar respaldo digital (.json)">
+        <button type="button" class="btn btn-outline btn-sm" onclick="exportInspectionJSON(); closeMobileMenu();" title="Descargar respaldo digital (.json)">
           💾 Respaldar
         </button>
         <label class="btn btn-outline btn-sm" style="margin:0;" title="Cargar archivo de respaldo (.json)">
           📤 Cargar
-          <input type="file" accept=".json" style="display:none;" onchange="importInspectionJSON(event)" />
+          <input type="file" accept=".json" style="display:none;" onchange="importInspectionJSON(event); closeMobileMenu();" />
         </label>
-        <button type="button" class="btn btn-outline btn-sm" onclick="resetNewInspection()">
+        <button type="button" class="btn btn-outline btn-sm" onclick="resetNewInspection(); closeMobileMenu();">
           ➕ Nueva Visita
         </button>
-        <button type="button" class="btn btn-gold" onclick="toggleReportPreview(true)">
+        <button type="button" class="btn btn-gold desktop-only-btn" onclick="toggleReportPreview(true)">
           📄 Ver Informe / PDF
         </button>
       </div>
@@ -624,9 +634,9 @@
 
   </main>
 
-  <!-- FLOATING BOTTOM BAR -->
+  <!-- FLOATING BOTTOM BAR (DESKTOP + APP BAR EN TELÉFONO) -->
   <footer class="bottom-bar no-print">
-    <div class="bottom-bar-inner">
+    <div class="bottom-bar-inner desktop-bottom-bar">
       <div class="autosave-indicator">
         <span style="color:var(--status-good);">●</span>
         <span id="autosave-text">Guardado automático activo en este dispositivo</span>
@@ -638,6 +648,34 @@
         </button>
       </div>
     </div>
+
+    <!-- NAVEGACIÓN INFERIOR ESTILO APP MÓVIL PARA TELÉFONO -->
+    <nav class="mobile-bottom-nav" id="mobile-bottom-nav">
+      <button type="button" class="mob-nav-item active" data-tab="tab-general" onclick="switchTab('tab-general')">
+        <span class="mob-nav-icon">📋</span>
+        <span class="mob-nav-label">Datos</span>
+      </button>
+      <button type="button" class="mob-nav-item" data-tab="tab-systems" onclick="switchTab('tab-systems')">
+        <span class="mob-nav-icon">⚡</span>
+        <span class="mob-nav-label">Equipos</span>
+      </button>
+      <button type="button" class="mob-nav-item" data-tab="tab-rooms" onclick="switchTab('tab-rooms')">
+        <span class="mob-nav-icon">🏠</span>
+        <span class="mob-nav-label">Cuartos</span>
+      </button>
+      <button type="button" class="mob-nav-item" id="mob-tab-integral" data-tab="tab-integral" onclick="switchTab('tab-integral')">
+        <span class="mob-nav-icon">🚁</span>
+        <span class="mob-nav-label">Dron/Hum</span>
+      </button>
+      <button type="button" class="mob-nav-item" id="mob-tab-premium" data-tab="tab-premium" onclick="switchTab('tab-premium')">
+        <span class="mob-nav-icon">⚖️</span>
+        <span class="mob-nav-label">Legal</span>
+      </button>
+      <button type="button" class="mob-nav-item" data-tab="tab-closing" onclick="switchTab('tab-closing')">
+        <span class="mob-nav-icon">✍️</span>
+        <span class="mob-nav-label">Firmas</span>
+      </button>
+    </nav>
   </footer>
 
   <!-- MODAL: AGREGAR HABITACIÓN / ÁREA -->
