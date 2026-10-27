@@ -2594,11 +2594,21 @@ function renderOfficialReportHTML() {
 // ============================================================================
 
 const STORAGE_DRIVE_FOLDER_KEY = 'clave_inspeccion_drive_folder_v1';
-// Si deseas dejar fijo el enlace de la carpeta de Google Drive de la empresa, pégalo aquí:
-const DEFAULT_DRIVE_FOLDER_URL = 'https://drive.google.com/drive/my-drive';
+const STORAGE_DRIVE_TOKEN_KEY = 'clave_inspeccion_drive_token_v1';
+// Carpeta oficial de Google Drive de CLAVE CONSTRUCCIÓN fijada por defecto:
+const DEFAULT_DRIVE_FOLDER_ID = '10H-2yMX_VXg4wjXv3YExS3iBMMYd2-Pf';
+const DEFAULT_DRIVE_FOLDER_URL = 'https://drive.google.com/drive/folders/10H-2yMX_VXg4wjXv3YExS3iBMMYd2-Pf?usp=drive_link';
 
 function getDriveFolderUrl() {
   return localStorage.getItem(STORAGE_DRIVE_FOLDER_KEY) || DEFAULT_DRIVE_FOLDER_URL;
+}
+
+function extractDriveFolderId(urlOrId) {
+  const str = (urlOrId || '').trim();
+  if (!str) return DEFAULT_DRIVE_FOLDER_ID;
+  const match = str.match(/\/folders\/([a-zA-Z0-9_-]+)/);
+  if (match && match[1]) return match[1];
+  return DEFAULT_DRIVE_FOLDER_ID;
 }
 
 function getSafeWorkbookFilename() {
@@ -2613,7 +2623,7 @@ function getSafeWorkbookFilename() {
 
 function openSheetsConfigModal() {
   const input = document.getElementById('drive-folder-url');
-  const saved = localStorage.getItem(STORAGE_DRIVE_FOLDER_KEY) || '';
+  const saved = localStorage.getItem(STORAGE_DRIVE_FOLDER_KEY) || DEFAULT_DRIVE_FOLDER_URL;
   if (input) input.value = saved;
   const fnEl = document.getElementById('drive-modal-filename');
   if (fnEl) fnEl.textContent = getSafeWorkbookFilename();
@@ -2629,7 +2639,8 @@ function saveDriveFolderUrl() {
   const url = (input?.value || '').trim();
   if (!url) {
     localStorage.removeItem(STORAGE_DRIVE_FOLDER_KEY);
-    showToast('Se usará tu unidad principal de Google Drive', 'info');
+    if (input) input.value = DEFAULT_DRIVE_FOLDER_URL;
+    showToast('📁 Carpeta oficial de CLAVE CONSTRUCCIÓN restaurada por defecto', 'info');
     return;
   }
   localStorage.setItem(STORAGE_DRIVE_FOLDER_KEY, url);
@@ -3136,11 +3147,64 @@ function downloadFinishedExcelWorkbook() {
   showToast(`📊 Hoja terminada descargada: ${filename}`, 'success');
 }
 
-function exportFinishedWorkbookAndDrive() {
-  // 1. Descarga de inmediato la hoja .xlsx ya terminada
+async function uploadBlobToDriveFolder(blob, filename) {
+  const token = (localStorage.getItem(STORAGE_DRIVE_TOKEN_KEY) || '').trim();
+  if (!token) return false;
+
+  const folderId = extractDriveFolderId(getDriveFolderUrl());
+  const metadata = {
+    name: filename,
+    mimeType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+    parents: [folderId]
+  };
+
+  const form = new FormData();
+  form.append('metadata', new Blob([JSON.stringify(metadata)], { type: 'application/json' }));
+  form.append('file', blob, filename);
+
+  try {
+    const res = await fetch('https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&fields=id,name,webViewLink', {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${token}`
+      },
+      body: form
+    });
+    if (res.ok) {
+      const data = await res.json();
+      showToast(`☁️ ¡Subido automáticamente a la carpeta de Drive! (${data.name})`, 'success');
+      return true;
+    }
+  } catch (err) {
+    console.warn('Error en subida directa API Drive:', err);
+  }
+  return false;
+}
+
+async function exportFinishedWorkbookAndDrive() {
+  // 1. Guarda en la Base de Datos y genera la hoja .xlsx terminada
+  syncCurrentToDatabaseSilent();
+  const blob = createFinishedWorkbookBlob();
+  const filename = getSafeWorkbookFilename();
+
+  // 2. Intenta subida directa automática a la carpeta 10H-2yMX_VXg4wjXv3YExS3iBMMYd2-Pf si hay token activo
+  if (blob) {
+    const uploaded = await uploadBlobToDriveFolder(blob, filename);
+    if (uploaded) {
+      // También actualiza la Base de Datos Maestra en la misma carpeta
+      const masterBlob = createMasterDatabaseWorkbookBlob();
+      if (masterBlob) {
+        await uploadBlobToDriveFolder(masterBlob, getMasterDatabaseFilename());
+      }
+      window.open(getDriveFolderUrl(), '_blank', 'noopener,noreferrer');
+      return;
+    }
+  }
+
+  // 3. Descarga la hoja .xlsx terminada y abre la carpeta de Drive de CLAVE CONSTRUCCIÓN
   downloadFinishedExcelWorkbook();
-  // 2. Abre el panel de subida directa a Google Drive
   openSheetsConfigModal();
+  window.open(getDriveFolderUrl(), '_blank', 'noopener,noreferrer');
 }
 
 async function shareWorkbookToDriveApp() {
@@ -3148,6 +3212,12 @@ async function shareWorkbookToDriveApp() {
   if (!blob) return;
 
   const filename = getSafeWorkbookFilename();
+  const uploaded = await uploadBlobToDriveFolder(blob, filename);
+  if (uploaded) {
+    window.open(getDriveFolderUrl(), '_blank', 'noopener,noreferrer');
+    return;
+  }
+
   const file = new File([blob], filename, {
     type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
   });
@@ -3166,14 +3236,14 @@ async function shareWorkbookToDriveApp() {
     }
   }
 
-  // Si está en computadora o el navegador no soporta share de archivos, abre Google Drive y descarga
+  // Si está en computadora o el navegador no soporta share de archivos, abre la carpeta oficial de Drive
   openDriveFolderAndDownload();
 }
 
 function openDriveFolderAndDownload() {
   const driveUrl = getDriveFolderUrl();
   window.open(driveUrl, '_blank', 'noopener,noreferrer');
-  showToast('☁️ Google Drive abierto. Arrastra ahí la hoja .xlsx descargada', 'info');
+  showToast('☁️ Carpeta de Google Drive de CLAVE CONSTRUCCIÓN abierta. Suelta ahí la hoja .xlsx descargada', 'info');
 }
 
 function exportInspectionCSV() {
@@ -3505,6 +3575,12 @@ async function shareMasterDatabaseToDrive() {
   if (!blob) return;
 
   const filename = getMasterDatabaseFilename();
+  const uploaded = await uploadBlobToDriveFolder(blob, filename);
+  if (uploaded) {
+    window.open(getDriveFolderUrl(), '_blank', 'noopener,noreferrer');
+    return;
+  }
+
   const file = new File([blob], filename, {
     type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
   });
